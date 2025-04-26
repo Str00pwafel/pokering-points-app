@@ -38,7 +38,7 @@ function promptUsername() {
     username = name;
     sessionStorage.setItem("jiraPokerUsername", username);
     document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
-    document.getElementById('pokerScreen').classList.remove('hidden');
+    document.getElementById('mainContent').classList.remove('hidden');
     socket.emit('join', { sessionId, username, clientId });
   }, true);
 }
@@ -47,7 +47,7 @@ window.addEventListener('load', () => {
   if (isValidUsername(username)) {
     const hostVoteDecision = sessionStorage.getItem("jiraPokerHostVoteDecision");
     document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
-    document.getElementById('pokerScreen').classList.remove('hidden');
+    document.getElementById('mainContent').classList.remove('hidden');
 
     socket.emit('join', {
       sessionId,
@@ -153,7 +153,47 @@ socket.on('usersUpdate', users => {
   const votingUsers = userList.filter(u => !(u.isHost && u.wantsToVote === false));
   const selected = votingUsers.filter(u => u.vote !== null).length;
   document.getElementById('status').innerText = `${selected} of ${votingUsers.length} selected`;
+
+  const userListContent = document.getElementById('userListContent');
+  if (userListContent) {
+    userListContent.innerHTML = '';
+
+    userList.forEach(user => {
+      const userItem = document.createElement('div');
+      userItem.style.display = 'flex';
+      userItem.style.alignItems = 'center';
+      userItem.style.justifyContent = 'flex-start';
+      userItem.style.gap = '8px';
+      userItem.style.padding = '4px 0';
+      userItem.style.fontSize = '16px';
+
+      const dot = document.createElement('span');
+      dot.style.display = 'inline-block';
+      dot.style.width = '10px';
+      dot.style.height = '10px';
+      dot.style.borderRadius = '50%';
+
+      if (user.vote !== null) {
+        dot.style.backgroundColor = 'limegreen';
+      } else {
+        dot.style.backgroundColor = 'gray';
+      }
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = user.username;
+
+      if (user.isHost && user.wantsToVote === false) {
+        nameSpan.style.opacity = '0.6';
+        nameSpan.textContent += ' (Host is not voting)';
+      }
+
+      userItem.appendChild(dot);
+      userItem.appendChild(nameSpan);
+      userListContent.appendChild(userItem);
+    });
+  }
 });
+
 
 socket.on('countdown', seconds => {
   document.getElementById('countdown').innerText = `Revealing in: ${seconds}`;

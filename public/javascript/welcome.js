@@ -1,3 +1,3 @@
 function startSession() {
-    window.location.href = '/create';
-  }
+  window.location.href = '/create';
+}

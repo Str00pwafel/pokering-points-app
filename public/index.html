@@ -1,39 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Pokering Points</title>
-  <link rel="stylesheet" href="/css/index.css" />
-  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
-  <script src="/javascript/index.js" defer></script>
-</head>
-<body>
-  <a href="#" id="newSessionLink">🔁 New Session</a>
-  <div class="container hidden" id="pokerScreen">
-    <h1 id="welcomeUser"></h1>
-    <div style="margin-top: 10px;">
-      <button id="newRoundBtn" onclick="startNewRound()" style="display:none;">➡️ Start New Round</button>
-      <button id="copyLinkBtn" onclick="copyLink()">🔗 Copy Session Link</button>
-      <p id="copiedMsg" style="display:none; font-size: 14px; color: lightgreen;">Copied to clipboard!</p>
-    </div>
-    <h2>Select your story point</h2>
-    <div id="status"></div>
-    <div class="card-options" id="cardOptions"></div>
-    <div id="countdown"></div>
-    <div id="votesDisplay"></div>
-  </div>
-  <div id="modalBackdrop" class="hidden" role="dialog" aria-modal="true">
-    <div id="modalContent">
-      <p id="modalMessage"></p>
-      <div id="modalError" class="error-message"></div>
-      <button id="modalConfirm">OK</button>
-      <button id="modalCancel">Cancel</button>
-    </div>
-  </div>
-  <noscript>
-    <style>body { display: none; }</style>
-    <div>Please enable JavaScript to use Jira Poker.</div>
-  </noscript>
-</body>
+   <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>Pokering Points</title>
+      <link rel="stylesheet" href="/css/index.css" />
+      <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
+      <script src="/javascript/index.js" defer></script>
+   </head>
+   <body>
+      <a href="#" id="newSessionLink">🔁 New Session</a>
+      <div id="mainContent" class="flex-container hidden">
+         <div id="pokerScreen" class="container">
+            <h1 id="welcomeUser"></h1>
+            <div style="margin-top: 10px;">
+               <button id="newRoundBtn" onclick="startNewRound()" style="display:none;">➡️ Start New Round</button>
+               <button id="copyLinkBtn" onclick="copyLink()">🔗 Copy Session Link</button>
+               <p id="copiedMsg" style="display:none; font-size: 14px; color: lightgreen;">Copied to clipboard!</p>
+            </div>
+            <h2>Select your story point</h2>
+            <div id="status"></div>
+            <div class="card-options" id="cardOptions"></div>
+            <div id="countdown"></div>
+            <div id="votesDisplay"></div>
+         </div>
+         <div id="userList">
+            <h3>Users</h3>
+            <div id="userListContent"></div>
+         </div>
+      </div>
+      <div id="modalBackdrop" class="hidden" role="dialog" aria-modal="true">
+         <div id="modalContent">
+            <p id="modalMessage"></p>
+            <div id="modalError" class="error-message"></div>
+            <button id="modalConfirm">OK</button>
+            <button id="modalCancel">Cancel</button>
+         </div>
+      </div>
+      <noscript>
+         <style>body { display: none; }</style>
+         <div>Please enable JavaScript to use Jira Poker.</div>
+      </noscript>
+   </body>
 </html>
