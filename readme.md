@@ -10,7 +10,7 @@ A simple FastAPI + Socket.IO based planning poker app.
 
 1. Clone the repo:
    ```bash
-   git clone https://github.com/yourusername/pokering-app.git
+   git clone https://github.com/Str00pwafel/pokering-points-app
    cd pokering-app
    ```
 
