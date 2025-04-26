@@ -92,9 +92,23 @@ async def join(sid, data):
         await sio.emit("joinFailed", {"reason": "Client already connected"}, room=sid)
         return
 
-    sessions[session_id]["users"][sid] = {"username": username, "vote": None, "isHost": is_host, "clientId": client_id}
+    user_data = {
+        "username": username,
+        "vote": None,
+        "isHost": is_host,
+        "clientId": client_id
+    }
+
+    if "wantsToVote" in data:
+        user_data["wantsToVote"] = data["wantsToVote"]
+
+    sessions[session_id]["users"][sid] = user_data
+
     await sio.enter_room(sid, session_id)
     await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
+
+    if is_host and "wantsToVote" not in data:
+        await sio.emit('askHostToJoinVoting', room=sid)
 
 @sio.event
 async def vote(sid, data):
@@ -110,8 +124,9 @@ async def vote(sid, data):
     if user:
         user["vote"] = value
 
-        users = list(sessions[session_id]["users"].values())
-        all_voted = len(users) > 0 and all(u["vote"] is not None for u in users)
+        users = [user for user in sessions[session_id]["users"].values() if not (user.get("isHost") and user.get("wantsToVote") is False)]
+
+        all_voted = len(users) > 0 and all(user["vote"] is not None for user in users)
 
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
 
@@ -145,11 +160,26 @@ async def requestNewRound(sid, data):
     }
 
     username_map = {sockid: user["username"] for sockid, user in old_session.get("users", {}).items()}
+    wants_to_vote_map = {sockid: user.get("wantsToVote") for sockid, user in old_session.get("users", {}).items()}
 
-    await sio.emit("redirectToNewSession", {"url": f"/session/{new_id}", "usernames": username_map}, room=session_id)
+    await sio.emit("redirectToNewSession", {"url": f"/session/{new_id}", "usernames": username_map, "wantsToVote": wants_to_vote_map}, room=session_id)
 
     # Clean up old session
     del sessions[session_id]
+
+@sio.event
+async def hostVotingDecision(sid, data):
+    session_id = data.get("sessionId")
+    wants_to_vote = data.get("wantsToVote")
+
+    if session_id not in sessions:
+        return
+
+    user = sessions[session_id]["users"].get(sid)
+    if user and user.get("isHost"):
+        user["wantsToVote"] = wants_to_vote
+
+        await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
 
 # Start server
 if __name__ == "__main__":

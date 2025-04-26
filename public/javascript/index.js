@@ -45,9 +45,16 @@ function promptUsername() {
 
 window.addEventListener('load', () => {
   if (isValidUsername(username)) {
+    const hostVoteDecision = sessionStorage.getItem("jiraPokerHostVoteDecision");
     document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
     document.getElementById('pokerScreen').classList.remove('hidden');
-    socket.emit('join', { sessionId, username, clientId });
+
+    socket.emit('join', {
+      sessionId,
+      username,
+      clientId,
+      wantsToVote: hostVoteDecision !== null ? (hostVoteDecision === "true") : undefined
+    });
   } else {
     promptUsername();
   }
@@ -68,7 +75,7 @@ function selectCard(element, value) {
 
   selectedCard = element;
   element.classList.add('selected');
-  
+
   const allCards = document.querySelectorAll('.card');
   allCards.forEach(card => {
   card.classList.add('disabled');
@@ -103,23 +110,49 @@ function copyLink() {
   });
 }
 
-socket.on('redirectToNewSession', ({ url, usernames }) => {
+socket.on('redirectToNewSession', ({ url, usernames, wantsToVote }) => {
   const mySocketId = socket.id;
   const myName = usernames?.[mySocketId];
+  const myWantsToVote = wantsToVote?.[mySocketId];
+
   if (myName) {
     sessionStorage.setItem("jiraPokerUsername", myName);
   }
+  if (myWantsToVote !== undefined) {
+    sessionStorage.setItem("jiraPokerHostVoteDecision", myWantsToVote);
+  }
+
   window.location.href = url;
 });
 
 socket.on('usersUpdate', users => {
-  const userList = Object.values(users);
-  const selected = userList.filter(u => u.vote !== null).length;
-  document.getElementById('status').innerText = `${selected} of ${userList.length} selected`;
-
   const myUser = Object.values(users).find(u => u.clientId === clientId);
   const isHost = myUser?.isHost;
+
   document.getElementById('newRoundBtn').style.display = isHost ? 'inline-block' : 'none';
+
+  if (isHost && !window.hasBeenAskedToVote) {
+    window.hasBeenAskedToVote = true;
+
+    if (myUser?.wantsToVote === true) {
+      console.log('Host already decided to vote');
+    } else if (myUser?.wantsToVote === false) {
+      console.log('Host already decided not to vote');
+      document.getElementById('cardOptions').style.display = 'none';
+    } else {
+      showModal("Do you want to join voting?", (wantsToVote) => {
+        socket.emit('hostVotingDecision', { sessionId, wantsToVote });
+        if (!wantsToVote) {
+          document.getElementById('cardOptions').style.display = 'none';
+        }
+      }, false, true);
+    }
+  }
+
+  const userList = Object.values(users);
+  const votingUsers = userList.filter(u => !(u.isHost && u.wantsToVote === false));
+  const selected = votingUsers.filter(u => u.vote !== null).length;
+  document.getElementById('status').innerText = `${selected} of ${votingUsers.length} selected`;
 });
 
 socket.on('countdown', seconds => {
@@ -128,7 +161,8 @@ socket.on('countdown', seconds => {
 
 socket.on('revealVotes', users => {
   document.getElementById('countdown').innerText = "";
-  const results = Object.values(users)
+  const votingUsers = Object.values(users).filter(u => !(u.isHost && u.wantsToVote === false));
+  const results = votingUsers
     .map(u => `
       <div class="vote-card">
         <p class="voter-name">${escapeHTML(u.username)}</p>
@@ -144,7 +178,8 @@ socket.on('joinFailed', ({ reason }) => {
     window.location.href = '/';
   });
 });
-function showModal(message, onConfirm, withInput = false) {
+
+function showModal(message, onConfirm, withInput = false, yesNoMode = false) {
   const backdrop = document.getElementById('modalBackdrop');
   const messageEl = document.getElementById('modalMessage');
   const confirmBtn = document.getElementById('modalConfirm');
@@ -156,6 +191,14 @@ function showModal(message, onConfirm, withInput = false) {
     : message;
   errorEl.textContent = "";
 
+  if (yesNoMode) {
+    confirmBtn.textContent = "Yes";
+    cancelBtn.textContent = "No";
+  } else {
+    confirmBtn.textContent = "Confirm";
+    cancelBtn.textContent = "Cancel";
+  }
+
   backdrop.classList.remove('hidden');
 
   function cleanup() {
@@ -165,20 +208,31 @@ function showModal(message, onConfirm, withInput = false) {
   }
 
   function confirmHandler() {
-    const inputEl = document.getElementById('modalInput');
     const errorEl = document.getElementById('modalError');
 
-    if (inputEl && !isValidUsername(inputEl.value.trim())) {
-      errorEl.textContent = "Name must be letters only (max 24 characters).";
-      return;
+    if (withInput) {
+      const inputEl = document.getElementById('modalInput');
+      if (!inputEl || !isValidUsername(inputEl.value.trim())) {
+        errorEl.textContent = "Name must be letters only (max 24 characters).";
+        return;
+      }
     }
 
     errorEl.textContent = "";
-    onConfirm();
+    if (onConfirm) {
+      if (yesNoMode) {
+        onConfirm(true);
+      } else {
+        onConfirm();
+      }
+    }
     cleanup();
   }
 
   function cancelHandler() {
+    if (onConfirm && yesNoMode) {
+      onConfirm(false);
+    }
     cleanup();
   }
 
@@ -189,6 +243,7 @@ function showModal(message, onConfirm, withInput = false) {
 document.getElementById('newSessionLink').addEventListener('click', (e) => {
   e.preventDefault();
   showModal("Start a fresh session? This won't move any users.", () => {
+    sessionStorage.removeItem("jiraPokerHostVoteDecision");
     window.location.href = '/create';
   });
 });
