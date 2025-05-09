@@ -4,20 +4,33 @@ import socketio
 import uvicorn
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 # Session storage
 sessions = {}
-SESSION_CLEANUP_INTERVAL = 60  # in seconds
+SESSION_CLEANUP_INTERVAL = timedelta(hours=1)
+IDLE_TIMEOUT = timedelta(hours=2)
+ABSOLUTE_TIMEOUT = timedelta(hours=24)
 
 # Session cleanup background task
 async def session_cleanup():
     while True:
-        await asyncio.sleep(SESSION_CLEANUP_INTERVAL)
-        empty_sessions = [sid for sid, s in sessions.items() if not s["users"]]
-        for sid in empty_sessions:
+        await asyncio.sleep(SESSION_CLEANUP_INTERVAL.total_seconds())
+        now = datetime.now(timezone.utc)
+        to_remove = []
+        for sid, session in sessions.items():
+            last_activity = session.get("lastActivity", now)
+            created_at = session.get("createdAt", now)
+            if isinstance(last_activity, str):
+                last_activity = datetime.fromisoformat(last_activity)
+            if isinstance(created_at, str):
+                created_at = datetime.fromisoformat(created_at)
+            if now - last_activity > IDLE_TIMEOUT or now - created_at > ABSOLUTE_TIMEOUT:
+                to_remove.append(sid)
+        for sid in to_remove:
             del sessions[sid]
 
 # Lifespan handler
@@ -42,7 +55,9 @@ async def create_session():
     sessions[session_id] = {
         "users": {},
         "revealed": False,
-        "hostClientId": None
+        "hostClientId": None,
+        "createdAt": datetime.now(timezone.utc),
+        "lastActivity": datetime.now(timezone.utc)
     }
     return RedirectResponse(f"/session/{session_id}")
 
@@ -103,6 +118,7 @@ async def join(sid, data):
         user_data["wantsToVote"] = data["wantsToVote"]
 
     sessions[session_id]["users"][sid] = user_data
+    sessions[session_id]["lastActivity"] = datetime.now(timezone.utc)
 
     await sio.enter_room(sid, session_id)
     await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
@@ -164,7 +180,6 @@ async def requestNewRound(sid, data):
 
     await sio.emit("redirectToNewSession", {"url": f"/session/{new_id}", "usernames": username_map, "wantsToVote": wants_to_vote_map}, room=session_id)
 
-    # Clean up old session
     del sessions[session_id]
 
 @sio.event
