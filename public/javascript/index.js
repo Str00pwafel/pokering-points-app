@@ -60,7 +60,7 @@ window.addEventListener('load', () => {
   }
 });
 
-const cardValues = [1,2,3,4,5,6,7,8,9,10];
+const cardValues = [1,2,3,4,5,6,7,8,9,10,"?"];
 const cardContainer = document.getElementById('cardOptions');
 cardValues.forEach(value => {
   const card = document.createElement('div');

@@ -65,12 +65,18 @@ button:hover {
 
 .vote-card {
 	background-color: #003366;
-	padding: 15px 20px;
 	border-radius: 12px;
 	text-align: center;
 	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
 	min-width: 90px;
 	transition: transform 0.3s ease;
+	width: 100px;
+	height: 80px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	align-items: center;
+	padding: 20px;
 }
 
 .vote-card:hover {
@@ -80,7 +86,7 @@ button:hover {
 .voter-name {
 	font-weight: bold;
 	font-size: 16px;
-	margin-bottom: 8px;
+	margin: 0;
 }
 
 .vote-value {
@@ -88,8 +94,8 @@ button:hover {
 	background: #2ECC40;
 	color: #001f3f;
 	border-radius: 8px;
-	padding: 10px 0;
-	width: 100%;
+	padding: 10px 20px;
+	min-width: 40px;
 }
 
 #newSessionLink {

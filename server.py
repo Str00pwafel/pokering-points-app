@@ -133,7 +133,7 @@ async def vote(sid, data):
 
     if session_id not in sessions:
         return
-    if not isinstance(value, int) or not (1 <= value <= 10):
+    if not ((isinstance(value, int) and 1 <= value <= 10) or value == "?"):
         return
 
     user = sessions[session_id]["users"].get(sid)
