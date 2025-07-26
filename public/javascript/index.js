@@ -18,7 +18,7 @@ if (!sessionId || sessionId === 'session' || sessionId === 'undefined') {
 let username = sessionStorage.getItem("jiraPokerUsername") || "";
 let clientId = sessionStorage.getItem('jiraPokerClientId');
 if (!clientId) {
-  clientId = 'client-' + Math.random().toString(36).substr(2, 9);
+  clientId = 'client-' + Math.random().toString(36).slice(2, 9);
   sessionStorage.setItem('jiraPokerClientId', clientId);
 }
 
@@ -201,18 +201,29 @@ socket.on('countdown', seconds => {
   document.getElementById('countdown').innerText = `Revealing in: ${seconds}`;
 });
 
-socket.on('revealVotes', users => {
+socket.on('revealVotes', ({ users, stats }) => {
   document.getElementById('countdown').innerText = "";
   const votingUsers = Object.values(users).filter(u => !(u.isHost && u.wantsToVote === false));
+
   const results = votingUsers
-    .map(u => `
-      <div class="vote-card">
-        <p class="voter-name">${escapeHTML(u.username)}</p>
-        <div class="vote-value">${u.vote}</div>
-      </div>
-    `)
+    .map(u => {
+      const isOutlier = stats?.outliers?.includes(u.username);
+      return `
+        <div class="vote-card${isOutlier ? ' outlier' : ''}">
+          <p class="voter-name">${escapeHTML(u.username)}</p>
+          <div class="vote-value">${u.vote}</div>
+        </div>
+      `;
+    })
     .join('');
+
+  let summary = "";
+  if (stats?.average !== undefined) {
+    summary += `<div class="vote-summary">Average: ${stats.average}</div>`;
+  }
+
   document.getElementById('votesDisplay').innerHTML = results;
+  document.getElementById('voteSummary').innerHTML = summary;
 });
 
 socket.on('joinFailed', ({ reason }) => {

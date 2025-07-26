@@ -156,7 +156,10 @@ async def vote(sid, data):
     if user:
         user["vote"] = value
 
-        users = [user for user in sessions[session_id]["users"].values() if not (user.get("isHost") and user.get("wantsToVote") is False)]
+        users = [
+            user for user in sessions[session_id]["users"].values()
+            if not (user.get("isHost") and user.get("wantsToVote") is False)
+        ]
 
         all_voted = len(users) > 0 and all(user["vote"] is not None for user in users)
 
@@ -172,9 +175,30 @@ async def vote(sid, data):
                     await sio.emit("countdown", count, room=session_id)
                     await asyncio.sleep(1)
                     count -= 1
-                await sio.emit("revealVotes", sessions[session_id]["users"], room=session_id)
+
+                numeric_votes = [
+                    u["vote"] for u in sessions[session_id]["users"].values()
+                    if isinstance(u["vote"], int)
+                ]
+
+                vote_stats = {}
+                if numeric_votes:
+                    avg = sum(numeric_votes) / len(numeric_votes)
+                    vote_stats["average"] = round(avg, 2)
+
+                    vote_stats["outliers"] = [
+                        u["username"]
+                        for u in sessions[session_id]["users"].values()
+                        if isinstance(u["vote"], int) and abs(u["vote"] - avg) >= 2
+                    ]
+
+                await sio.emit("revealVotes", {
+                    "users": sessions[session_id]["users"],
+                    "stats": vote_stats
+                }, room=session_id)
 
             asyncio.create_task(countdown())
+
 
 @sio.event
 async def requestNewRound(sid, data):
