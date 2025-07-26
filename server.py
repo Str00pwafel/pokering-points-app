@@ -3,17 +3,21 @@ import shortuuid
 import socketio
 import uvicorn
 
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 # Session storage
 sessions = {}
-SESSION_CLEANUP_INTERVAL = timedelta(hours=1)
-IDLE_TIMEOUT = timedelta(hours=2)
 ABSOLUTE_TIMEOUT = timedelta(hours=24)
+IDLE_TIMEOUT = timedelta(hours=2)
+JOIN_RATE_LIMIT = timedelta(seconds=5)
+SESSION_CLEANUP_INTERVAL = timedelta(hours=1)
+
+last_join_time = defaultdict(lambda: datetime.min)
 
 # Session cleanup background task
 async def session_cleanup():
@@ -85,9 +89,21 @@ async def disconnect(sid):
 
 @sio.event
 async def join(sid, data):
+    client_id = data.get("clientId")
+    ip_addr = None
     session_id = data.get("sessionId")
     username = data.get("username")
-    client_id = data.get("clientId")
+
+    if "asgi.scope" in data and data["asgi.scope"].get("client"):
+        ip_addr, _ = data["asgi.scope"]["client"]
+
+    now = datetime.now()
+
+    if ip_addr and now - last_join_time[ip_addr] < JOIN_RATE_LIMIT:
+        await sio.emit("joinFailed", {"reason": "Too many join attempts. Please wait."}, room=sid)
+        return
+
+    last_join_time[ip_addr] = now
 
     if session_id not in sessions:
         await sio.emit("joinFailed", {"reason": "Session not found"}, room=sid)
