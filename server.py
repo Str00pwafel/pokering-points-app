@@ -168,11 +168,18 @@ async def requestNewRound(sid, data):
     if old_session is None:
         return
 
+    user = old_session["users"].get(sid)
+    if not user or not user.get("isHost"):
+        await sio.emit("joinFailed", {"reason": "Only host can request new round"}, room=sid)
+        return
+
     new_id = shortuuid.ShortUUID().random(length=6)
     sessions[new_id] = {
         "users": {},
         "revealed": False,
-        "hostClientId": old_session.get("hostClientId")
+        "hostClientId": old_session.get("hostClientId"),
+        "createdAt": datetime.now(timezone.utc),
+        "lastActivity": datetime.now(timezone.utc)
     }
 
     username_map = {sockid: user["username"] for sockid, user in old_session.get("users", {}).items()}

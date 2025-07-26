@@ -185,6 +185,8 @@ socket.on('usersUpdate', users => {
       if (user.isHost && user.wantsToVote === false) {
         nameSpan.style.opacity = '0.6';
         nameSpan.textContent += ' (Host is not voting)';
+      } else if (user.isHost && user.wantsToVote === true) {
+        nameSpan.textContent += ' (Host)';
       }
 
       userItem.appendChild(dot);
