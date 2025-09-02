@@ -7,7 +7,7 @@ function escapeHTML(str) {
 }
 
 function isValidUsername(name) {
-  return /^[a-zA-Z]{1,24}$/.test(name);
+  return /^[a-zA-Z]{1,20}$/.test(name);
 }
 
 const sessionId = window.location.pathname.split('/').pop();
@@ -30,12 +30,12 @@ function promptUsername() {
     const errorEl = document.getElementById('modalError');
 
     if (!isValidUsername(name)) {
-      errorEl.textContent = "Name must be letters only (max 24 characters).";
+      errorEl.textContent = "Name must be letters only (max 20 characters).";
       return;
     }
 
     errorEl.textContent = "";
-    username = name;
+    username = name.slice(0, 20);;
     sessionStorage.setItem("jiraPokerUsername", username);
     document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
     document.getElementById('mainContent').classList.remove('hidden');
@@ -180,7 +180,9 @@ socket.on('usersUpdate', users => {
       }
 
       const nameSpan = document.createElement('span');
+      nameSpan.className = 'user-name';
       nameSpan.textContent = user.username;
+      nameSpan.title = user.username;
 
       if (user.isHost && user.wantsToVote === false) {
         nameSpan.style.opacity = '0.6';
@@ -210,7 +212,7 @@ socket.on('revealVotes', ({ users, stats }) => {
       const isOutlier = stats?.outliers?.includes(u.username);
       return `
         <div class="vote-card${isOutlier ? ' outlier' : ''}">
-          <p class="voter-name">${escapeHTML(u.username)}</p>
+          <p class="voter-name" title="${escapeHTML(u.username)}">${escapeHTML(u.username)}</p>
           <div class="vote-value">${u.vote}</div>
         </div>
       `;
@@ -240,7 +242,7 @@ function showModal(message, onConfirm, withInput = false, yesNoMode = false) {
   const errorEl = document.getElementById('modalError');
 
   messageEl.innerHTML = withInput
-    ? `${message}<br><input type="text" id="modalInput" maxlength="24">`
+    ? `${message}<br><input type="text" id="modalInput" maxlength="20">`
     : message;
   errorEl.textContent = "";
 
@@ -266,7 +268,7 @@ function showModal(message, onConfirm, withInput = false, yesNoMode = false) {
     if (withInput) {
       const inputEl = document.getElementById('modalInput');
       if (!inputEl || !isValidUsername(inputEl.value.trim())) {
-        errorEl.textContent = "Name must be letters only (max 24 characters).";
+        errorEl.textContent = "Name must be letters only (max 20 characters).";
         return;
       }
     }

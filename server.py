@@ -1,4 +1,5 @@
 import asyncio
+import re
 import shortuuid
 import socketio
 import uvicorn
@@ -16,6 +17,7 @@ ABSOLUTE_TIMEOUT = timedelta(hours=24)
 IDLE_TIMEOUT = timedelta(hours=2)
 JOIN_RATE_LIMIT = timedelta(seconds=5)
 SESSION_CLEANUP_INTERVAL = timedelta(hours=1)
+USERNAME_RE = re.compile(r"^[A-Za-z]{1,20}$")
 
 last_join_time = defaultdict(lambda: datetime.min)
 
@@ -109,8 +111,8 @@ async def join(sid, data):
         await sio.emit("joinFailed", {"reason": "Session not found"}, room=sid)
         return
 
-    if not isinstance(username, str) or not username.isalpha() or len(username) > 24:
-        await sio.emit("joinFailed", {"reason": "Invalid username"}, room=sid)
+    if not isinstance(username, str) or not USERNAME_RE.fullmatch(username):
+        await sio.emit("joinFailed", {"reason": "Invalid username (letters only, max 20)."}, room=sid)
         return
 
     if sessions[session_id]["hostClientId"] is None:
@@ -245,4 +247,4 @@ async def hostVotingDecision(sid, data):
 
 # Start server
 if __name__ == "__main__":
-    uvicorn.run("server:asgi_app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("server:asgi_app", host="0.0.0.0", port=8000, reload=False)
