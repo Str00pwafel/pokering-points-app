@@ -1,20 +1,20 @@
 # Pokering App
 
-A simple FastAPI + Socket.IO based planning poker app.
+A simple planning poker app built with **FastAPI** and **Socket.IO**.
 
 ## Requirements
+- Python **3.10+** (3.11 recommended)
+- pip
 
-- Python 3.10 or higher
-
-## Setup Instructions
+## Setup
 
 1. Clone the repo:
    ```bash
    git clone https://github.com/Str00pwafel/pokering-points-app
-   cd pokering-app
+   cd pokering-points-app
    ```
 
-2. Create a virtual environment:
+2. Create and activate a virtual environment:
     ```bash
     python3 -m venv env
     source env/bin/activate
@@ -22,10 +22,16 @@ A simple FastAPI + Socket.IO based planning poker app.
 
 3. Install dependencies:
     ```bash
+    pip install -U pip
     pip install -r requirements.txt
     ```
 
 4. Run server
     ```bash
-    python server.py
+    python3 server.py
+    ```
+
+5. Open the app
+    ```bash
+    http://localhost:8000/
     ```
