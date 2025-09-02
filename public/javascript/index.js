@@ -22,6 +22,18 @@ if (!clientId) {
   sessionStorage.setItem('jiraPokerClientId', clientId);
 }
 
+async function updateVersionBadge() {
+  try {
+    const res = await fetch('/version', { cache: 'no-store' });
+    if (!res.ok) return;
+    const { version } = await res.json();
+    const el = document.getElementById('versionBadge');
+    if (el) el.textContent = `v${version}`;
+  } catch (e) {
+    // silently ignore
+  }
+}
+
 let selectedCard = null;
 
 function promptUsername() {
@@ -35,7 +47,7 @@ function promptUsername() {
     }
 
     errorEl.textContent = "";
-    username = name.slice(0, 20);;
+    username = name.slice(0, 20);
     sessionStorage.setItem("jiraPokerUsername", username);
     document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
     document.getElementById('mainContent').classList.remove('hidden');
@@ -58,9 +70,10 @@ window.addEventListener('load', () => {
   } else {
     promptUsername();
   }
+  updateVersionBadge();
 });
 
-const cardValues = [1,2,3,4,5,6,7,8,9,10,"?"];
+const cardValues = [0, 0.5, 1, 2, 3, 4, 5, 8, 13, 20, "?"];
 const cardContainer = document.getElementById('cardOptions');
 cardValues.forEach(value => {
   const card = document.createElement('div');
@@ -78,9 +91,9 @@ function selectCard(element, value) {
 
   const allCards = document.querySelectorAll('.card');
   allCards.forEach(card => {
-  card.classList.add('disabled');
-  card.style.pointerEvents = 'none';
-  card.style.opacity = '0.5';
+    card.classList.add('disabled');
+    card.style.pointerEvents = 'none';
+    card.style.opacity = '0.5';
   });
 
   selectedCard.classList.remove('disabled');
@@ -90,12 +103,15 @@ function selectCard(element, value) {
   socket.emit('vote', { sessionId, value });
 }
 
-
 function startNewRound() {
-  showModal("Are you sure you want to start a new round? Everyone will be redirected.", () => {
-    sessionStorage.setItem("jiraPokerUsername", username);
-    socket.emit('requestNewRound', { sessionId });
-  });
+  showModal(
+    "Are you sure you want to start a new round?<br>" +
+    "<span style='color:green;font-weight:bold;'>Everyone will be redirected.</span>",
+    () => {
+      sessionStorage.setItem("jiraPokerUsername", username);
+      socket.emit('requestNewRound', { sessionId });
+    }
+  );
 }
 
 function copyLink() {
@@ -198,7 +214,6 @@ socket.on('usersUpdate', users => {
   }
 });
 
-
 socket.on('countdown', seconds => {
   document.getElementById('countdown').innerText = `Revealing in: ${seconds}`;
 });
@@ -297,8 +312,13 @@ function showModal(message, onConfirm, withInput = false, yesNoMode = false) {
 
 document.getElementById('newSessionLink').addEventListener('click', (e) => {
   e.preventDefault();
-  showModal("Start a fresh session? This won't move any users.", () => {
-    sessionStorage.removeItem("jiraPokerHostVoteDecision");
-    window.location.href = '/create';
-  });
+  showModal(
+    "Start a new session?<br><br>" +
+    "This will create a fresh session.<br>" +
+    "Currently connected users will <span style='color:red;font-weight:bold;'>NOT</span> be moved.",
+    () => {
+      sessionStorage.removeItem("jiraPokerHostVoteDecision");
+      window.location.href = '/create';
+    }
+  );
 });

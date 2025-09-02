@@ -39,11 +39,17 @@ button:hover {
 }
 
 .card {
-	padding: 20px 25px;
+	width: 40px;
+	height: 40px;
+	padding: 10px 15px;
 	font-size: 18px;
 	background-color: #0074D9;
 	border-radius: 10px;
 	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
 }
 
 .card.selected {
@@ -80,28 +86,24 @@ button:hover {
 }
 
 .vote-card.outlier {
-    border: 2px solid red;
-    box-shadow: 0 0 8px red;
+	border: 2px solid red;
+	box-shadow: 0 0 8px red;
 }
+
 .vote-summary {
-    font-weight: bold;
-    margin-bottom: 10px;
-    color: #ccc;
+	font-weight: bold;
+	margin-bottom: 10px;
+	color: #ccc;
+	text-align: center;
+	margin-top: 20px;
 }
 
 .vote-card-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  justify-content: center;
-  margin-bottom: 10px;
-}
-
-.vote-summary {
-  text-align: center;
-  font-weight: bold;
-  margin-top: 20px;
-  color: #ccc;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px;
+	justify-content: center;
+	margin-bottom: 10px;
 }
 
 .vote-card:hover {
@@ -115,7 +117,7 @@ button:hover {
 	display: block;
 	width: 100%;
 	text-align: center;
-	white-space: nowrap; 
+	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
@@ -130,11 +132,11 @@ button:hover {
 }
 
 .user-name {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 #newSessionLink {

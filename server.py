@@ -8,8 +8,10 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
+from fastapi import Request
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from version import __version__
 
 # Session storage
 sessions = {}
@@ -48,7 +50,7 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI and Socket.IO
 sio = socketio.AsyncServer(async_mode='asgi', max_http_buffer_size=1_000_000)
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, title="Pokering Points", version=__version__)
 
 # Routes first
 @app.get("/", response_class=HTMLResponse)
@@ -70,6 +72,16 @@ async def create_session():
 @app.get("/session/{session_id}", response_class=HTMLResponse)
 async def get_session(session_id: str):
     return FileResponse("public/index.html")
+
+@app.middleware("http")
+async def add_version_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-App-Version"] = __version__
+    return response
+
+@app.get("/version")
+async def get_version():
+    return {"version": __version__}
 
 app.mount("/", StaticFiles(directory="public"), name="static")
 
@@ -151,7 +163,7 @@ async def vote(sid, data):
 
     if session_id not in sessions:
         return
-    if not ((isinstance(value, int) and 1 <= value <= 10) or value == "?"):
+    if not (isinstance(value, (int, float)) or value == "?"):
         return
 
     user = sessions[session_id]["users"].get(sid)
@@ -180,7 +192,7 @@ async def vote(sid, data):
 
                 numeric_votes = [
                     u["vote"] for u in sessions[session_id]["users"].values()
-                    if isinstance(u["vote"], int)
+                    if isinstance(u["vote"], (int, float))
                 ]
 
                 vote_stats = {}
@@ -191,7 +203,7 @@ async def vote(sid, data):
                     vote_stats["outliers"] = [
                         u["username"]
                         for u in sessions[session_id]["users"].values()
-                        if isinstance(u["vote"], int) and abs(u["vote"] - avg) >= 2
+                        if isinstance(u["vote"], (int, float)) and abs(u["vote"] - avg) >= 2
                     ]
 
                 await sio.emit("revealVotes", {
