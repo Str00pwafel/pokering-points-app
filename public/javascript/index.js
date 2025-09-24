@@ -73,7 +73,7 @@ window.addEventListener('load', () => {
   updateVersionBadge();
 });
 
-const cardValues = [0, 0.5, 1, 2, 3, 4, 5, 8, 13, 20, "?"];
+const cardValues = [1, 2, 3, 5, 8, 13, 21, "?"];
 const cardContainer = document.getElementById('cardOptions');
 cardValues.forEach(value => {
   const card = document.createElement('div');
