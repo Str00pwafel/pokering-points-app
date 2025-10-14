@@ -29,7 +29,7 @@ async def session_cleanup():
         await asyncio.sleep(SESSION_CLEANUP_INTERVAL.total_seconds())
         now = datetime.now(timezone.utc)
         to_remove = []
-        for sid, session in sessions.items():
+        for sid, session in list(sessions.items()):
             last_activity = session.get("lastActivity", now)
             created_at = session.get("createdAt", now)
             if isinstance(last_activity, str):
@@ -65,7 +65,8 @@ async def create_session():
         "revealed": False,
         "hostClientId": None,
         "createdAt": datetime.now(timezone.utc),
-        "lastActivity": datetime.now(timezone.utc)
+        "lastActivity": datetime.now(timezone.utc),
+        "deck": [1, 2, 3, 5, 8, 13, 21],
     }
     return RedirectResponse(f"/session/{session_id}")
 
@@ -103,6 +104,7 @@ async def disconnect(sid):
 
 @sio.event
 async def join(sid, data):
+    deck = data.get("deck")
     client_id = data.get("clientId")
     ip_addr = None
     session_id = data.get("sessionId")
@@ -117,7 +119,8 @@ async def join(sid, data):
         await sio.emit("joinFailed", {"reason": "Too many join attempts. Please wait."}, room=sid)
         return
 
-    last_join_time[ip_addr] = now
+    if ip_addr:
+        last_join_time[ip_addr] = now
 
     if session_id not in sessions:
         await sio.emit("joinFailed", {"reason": "Session not found"}, room=sid)
@@ -129,10 +132,19 @@ async def join(sid, data):
 
     if sessions[session_id]["hostClientId"] is None:
         sessions[session_id]["hostClientId"] = client_id
+        if isinstance(deck, list):
+            try:
+                clean = [int(v) for v in deck if isinstance(v, (int, float))]
+                seen = set()
+                clean = [v for v in clean if not (v in seen or seen.add(v))]
+                if clean:
+                    sessions[session_id]["deck"] = clean
+            except Exception:
+                pass
 
     is_host = client_id == sessions[session_id]["hostClientId"]
 
-    duplicate_client = any(user.get("clientId") == client_id for user in sessions[session_id]["users"].values())
+    duplicate_client = any(u.get("clientId") == client_id for u in sessions[session_id]["users"].values())
     if duplicate_client:
         await sio.emit("joinFailed", {"reason": "Client already connected"}, room=sid)
         return
@@ -171,11 +183,11 @@ async def vote(sid, data):
         user["vote"] = value
 
         users = [
-            user for user in sessions[session_id]["users"].values()
-            if not (user.get("isHost") and user.get("wantsToVote") is False)
+            u for u in sessions[session_id]["users"].values()
+            if not (u.get("isHost") and u.get("wantsToVote") is False)
         ]
 
-        all_voted = len(users) > 0 and all(user["vote"] is not None for user in users)
+        all_voted = len(users) > 0 and all(u["vote"] is not None for u in users)
 
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
 
@@ -190,20 +202,28 @@ async def vote(sid, data):
                     await asyncio.sleep(1)
                     count -= 1
 
-                numeric_votes = [
-                    u["vote"] for u in sessions[session_id]["users"].values()
-                    if isinstance(u["vote"], (int, float))
+                deck = sessions[session_id].get("deck", [1, 2, 3, 5, 8, 13, 21])
+                index_of = {v: i for i, v in enumerate(deck)}
+
+                voted = [
+                    (u["username"], int(u["vote"]))
+                    for u in sessions[session_id]["users"].values()
+                    if isinstance(u["vote"], (int, float)) and int(u["vote"]) in index_of
                 ]
 
                 vote_stats = {}
-                if numeric_votes:
-                    avg = sum(numeric_votes) / len(numeric_votes)
+                if voted:
+                    avg = sum(v for _, v in voted) / len(voted)
                     vote_stats["average"] = round(avg, 2)
 
+                    idxs = sorted(index_of[v] for _, v in voted)
+                    median_idx = idxs[len(idxs) // 2]
+                    vote_stats["median"] = deck[median_idx]
+
+                    STEP_THRESHOLD = 2
                     vote_stats["outliers"] = [
-                        u["username"]
-                        for u in sessions[session_id]["users"].values()
-                        if isinstance(u["vote"], (int, float)) and abs(u["vote"] - avg) >= 2
+                        name for (name, v) in voted
+                        if abs(index_of[v] - median_idx) >= STEP_THRESHOLD
                     ]
 
                 await sio.emit("revealVotes", {
@@ -212,7 +232,6 @@ async def vote(sid, data):
                 }, room=session_id)
 
             asyncio.create_task(countdown())
-
 
 @sio.event
 async def requestNewRound(sid, data):
@@ -233,13 +252,18 @@ async def requestNewRound(sid, data):
         "revealed": False,
         "hostClientId": old_session.get("hostClientId"),
         "createdAt": datetime.now(timezone.utc),
-        "lastActivity": datetime.now(timezone.utc)
+        "lastActivity": datetime.now(timezone.utc),
+        "deck": old_session.get("deck", [1, 2, 3, 5, 8, 13, 21]),
     }
 
-    username_map = {sockid: user["username"] for sockid, user in old_session.get("users", {}).items()}
-    wants_to_vote_map = {sockid: user.get("wantsToVote") for sockid, user in old_session.get("users", {}).items()}
+    username_map = {sockid: u["username"] for sockid, u in old_session.get("users", {}).items()}
+    wants_to_vote_map = {sockid: u.get("wantsToVote") for sockid, u in old_session.get("users", {}).items()}
 
-    await sio.emit("redirectToNewSession", {"url": f"/session/{new_id}", "usernames": username_map, "wantsToVote": wants_to_vote_map}, room=session_id)
+    await sio.emit("redirectToNewSession", {
+        "url": f"/session/{new_id}",
+        "usernames": username_map,
+        "wantsToVote": wants_to_vote_map
+    }, room=session_id)
 
     del sessions[session_id]
 
@@ -254,7 +278,6 @@ async def hostVotingDecision(sid, data):
     user = sessions[session_id]["users"].get(sid)
     if user and user.get("isHost"):
         user["wantsToVote"] = wants_to_vote
-
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
 
 # Start server

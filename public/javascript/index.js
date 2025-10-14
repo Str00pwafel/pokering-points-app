@@ -29,7 +29,7 @@ async function updateVersionBadge() {
     const { version } = await res.json();
     const el = document.getElementById('versionBadge');
     if (el) el.textContent = `v${version}`;
-  } catch (e) {
+  } catch {
     // silently ignore
   }
 }
@@ -51,7 +51,7 @@ function promptUsername() {
     sessionStorage.setItem("jiraPokerUsername", username);
     document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
     document.getElementById('mainContent').classList.remove('hidden');
-    socket.emit('join', { sessionId, username, clientId });
+    socket.emit('join', { sessionId, username, clientId, deck: cardValues.filter(v => typeof v === 'number') });
   }, true);
 }
 
@@ -65,6 +65,7 @@ window.addEventListener('load', () => {
       sessionId,
       username,
       clientId,
+      deck: cardValues.filter(v => typeof v === 'number'),
       wantsToVote: hostVoteDecision !== null ? (hostVoteDecision === "true") : undefined
     });
   } else {
@@ -189,11 +190,7 @@ socket.on('usersUpdate', users => {
       dot.style.height = '10px';
       dot.style.borderRadius = '50%';
 
-      if (user.vote !== null) {
-        dot.style.backgroundColor = 'limegreen';
-      } else {
-        dot.style.backgroundColor = 'gray';
-      }
+      dot.style.backgroundColor = (user.vote !== null) ? 'limegreen' : 'gray';
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'user-name';
@@ -237,6 +234,9 @@ socket.on('revealVotes', ({ users, stats }) => {
   let summary = "";
   if (stats?.average !== undefined) {
     summary += `<div class="vote-summary">Average: ${stats.average}</div>`;
+  }
+  if (stats?.median !== undefined) {
+    summary += `<div class="vote-summary">Median: ${stats.median}</div>`;
   }
 
   document.getElementById('votesDisplay').innerHTML = results;
