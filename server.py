@@ -33,10 +33,11 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 sessions = {}
 MAX_ACTIVE_SESSIONS = 1000
 MAX_USERS_PER_SESSION = 100
+app_start_time = datetime.now(timezone.utc)
 ABSOLUTE_TIMEOUT = timedelta(hours=24)
 IDLE_TIMEOUT = timedelta(hours=2)
 JOIN_RATE_LIMIT = timedelta(seconds=5)
-SESSION_CLEANUP_INTERVAL = timedelta(hours=1)
+SESSION_CLEANUP_INTERVAL = timedelta(minutes=5)  # More frequent cleanup
 RATE_LIMIT_CLEANUP_INTERVAL = timedelta(minutes=10)
 CREATE_RATE_LIMIT = timedelta(seconds=10)
 
@@ -54,23 +55,58 @@ DECK_SIZE_MAX = 20
 last_join_time = defaultdict(lambda: datetime.min)
 last_create_time = defaultdict(lambda: datetime.min)
 
+# Socket.IO rate limiting per socket
+socket_rate_limits = defaultdict(lambda: defaultdict(list))
+
 # Session cleanup background task
 async def session_cleanup():
+    """Clean up expired sessions more efficiently"""
     while True:
         await asyncio.sleep(SESSION_CLEANUP_INTERVAL.total_seconds())
         now = datetime.now(timezone.utc)
         to_remove = []
+
         for sid, session in list(sessions.items()):
-            last_activity = session.get("lastActivity", now)
-            created_at = session.get("createdAt", now)
-            if isinstance(last_activity, str):
-                last_activity = datetime.fromisoformat(last_activity)
-            if isinstance(created_at, str):
-                created_at = datetime.fromisoformat(created_at)
+            # Datetimes are already datetime objects (no string parsing needed)
+            last_activity = session.get("lastActivity")
+            created_at = session.get("createdAt")
+
+            if not last_activity or not created_at:
+                # Invalid session, remove it
+                to_remove.append(sid)
+                continue
+
+            # Check timeouts
             if now - last_activity > IDLE_TIMEOUT or now - created_at > ABSOLUTE_TIMEOUT:
                 to_remove.append(sid)
+
+        # Remove expired sessions
         for sid in to_remove:
-            del sessions[sid]
+            if sid in sessions:
+                del sessions[sid]
+
+        # Log only if sessions were removed
+        if to_remove:
+            logger.warning(f"Cleaned up {len(to_remove)} expired sessions")
+
+# Socket.IO rate limiting helper
+def check_socket_rate_limit(sid, action, limit=30, window=60):
+    """Check if socket action is rate limited"""
+    now = datetime.now()
+
+    # Clean old entries for this socket/action
+    socket_rate_limits[sid][action] = [
+        t for t in socket_rate_limits[sid][action]
+        if now - t < timedelta(seconds=window)
+    ]
+
+    # Check limit
+    if len(socket_rate_limits[sid][action]) >= limit:
+        return False
+
+    # Record this action
+    socket_rate_limits[sid][action].append(now)
+    return True
 
 # Rate limit cleanup background task
 async def rate_limit_cleanup():
@@ -79,7 +115,7 @@ async def rate_limit_cleanup():
         now = datetime.now()
         cutoff = now - timedelta(minutes=30)
 
-        # Clean up old rate limit entries
+        # Clean up old IP-based rate limit entries
         removed_join = 0
         for ip in list(last_join_time.keys()):
             if last_join_time[ip] < cutoff:
@@ -91,6 +127,17 @@ async def rate_limit_cleanup():
             if last_create_time[ip] < cutoff:
                 del last_create_time[ip]
                 removed_create += 1
+
+        # Clean up disconnected socket rate limits
+        removed_sockets = 0
+        for sid in list(socket_rate_limits.keys()):
+            # Remove if no recent activity in any action
+            if all(
+                not timestamps or (now - max(timestamps)) > timedelta(minutes=30)
+                for timestamps in socket_rate_limits[sid].values()
+            ):
+                del socket_rate_limits[sid]
+                removed_sockets += 1
 
 
 # Lifespan handler
@@ -213,6 +260,62 @@ async def add_security_headers(request: Request, call_next):
 async def get_version():
     return {"version": __version__}
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    now = datetime.now(timezone.utc)
+    uptime = (now - app_start_time).total_seconds()
+
+    return {
+        "status": "healthy",
+        "version": __version__,
+        "uptime_seconds": round(uptime, 2),
+        "sessions": {
+            "active": len(sessions),
+            "max": MAX_ACTIVE_SESSIONS,
+            "usage_percent": round((len(sessions) / MAX_ACTIVE_SESSIONS) * 100, 2)
+        },
+        "rate_limits": {
+            "tracked_ips_join": len(last_join_time),
+            "tracked_ips_create": len(last_create_time)
+        }
+    }
+
+@app.get("/metrics")
+async def metrics():
+    """Simple metrics endpoint (text format)"""
+    now = datetime.now(timezone.utc)
+    uptime = (now - app_start_time).total_seconds()
+
+    # Calculate session stats
+    total_users = sum(len(session.get("users", {})) for session in sessions.values())
+
+    metrics_text = f"""# HELP pokering_uptime_seconds Application uptime in seconds
+# TYPE pokering_uptime_seconds gauge
+pokering_uptime_seconds {uptime}
+
+# HELP pokering_sessions_active Current number of active sessions
+# TYPE pokering_sessions_active gauge
+pokering_sessions_active {len(sessions)}
+
+# HELP pokering_sessions_max Maximum allowed sessions
+# TYPE pokering_sessions_max gauge
+pokering_sessions_max {MAX_ACTIVE_SESSIONS}
+
+# HELP pokering_users_total Total users across all sessions
+# TYPE pokering_users_total gauge
+pokering_users_total {total_users}
+
+# HELP pokering_rate_limit_ips_join IPs tracked for join rate limiting
+# TYPE pokering_rate_limit_ips_join gauge
+pokering_rate_limit_ips_join {len(last_join_time)}
+
+# HELP pokering_rate_limit_ips_create IPs tracked for create rate limiting
+# TYPE pokering_rate_limit_ips_create gauge
+pokering_rate_limit_ips_create {len(last_create_time)}
+"""
+    return HTMLResponse(content=metrics_text, media_type="text/plain")
+
 app.mount("/", StaticFiles(directory="public"), name="static")
 
 # Combine FastAPI and Socket.IO
@@ -233,6 +336,12 @@ async def disconnect(sid):
 
 @sio.event
 async def join(sid, data):
+    # Rate limiting: 5 joins per minute
+    if not check_socket_rate_limit(sid, "join", limit=5, window=60):
+        logger.warning(f"Join rate limit exceeded for socket {sid}")
+        await sio.emit("joinFailed", {"reason": "Too many join attempts"}, room=sid)
+        return
+
     # Validate data structure
     if not isinstance(data, dict):
         await sio.emit("joinFailed", {"reason": "Invalid request format"}, room=sid)
@@ -334,6 +443,10 @@ async def join(sid, data):
 
 @sio.event
 async def vote(sid, data):
+    # Rate limiting: 30 votes per minute
+    if not check_socket_rate_limit(sid, "vote", limit=30, window=60):
+        return
+
     # Validate data structure
     if not isinstance(data, dict):
         return
@@ -417,6 +530,12 @@ async def vote(sid, data):
 
 @sio.event
 async def requestNewRound(sid, data):
+    # Rate limiting: 3 new rounds per hour
+    if not check_socket_rate_limit(sid, "requestNewRound", limit=3, window=3600):
+        logger.warning(f"New round rate limit exceeded for socket {sid}")
+        await sio.emit("joinFailed", {"reason": "Too many new round requests"}, room=sid)
+        return
+
     # Validate data structure
     if not isinstance(data, dict):
         return
@@ -460,6 +579,10 @@ async def requestNewRound(sid, data):
 
 @sio.event
 async def hostVotingDecision(sid, data):
+    # Rate limiting: 10 voting decisions per minute
+    if not check_socket_rate_limit(sid, "hostVotingDecision", limit=10, window=60):
+        return
+
     # Validate data structure
     if not isinstance(data, dict):
         return
