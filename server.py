@@ -1,6 +1,8 @@
 import asyncio
+import logging
+import os
 import re
-import shortuuid
+import secrets
 import socketio
 import uvicorn
 
@@ -9,19 +11,48 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from version import __version__
 
-# Session storage
+# Configure logging (errors only to keep logs small)
+logging.basicConfig(
+    level=logging.WARNING,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Configuration from environment variables
+SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
+SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+# Session storage and limits
 sessions = {}
+MAX_ACTIVE_SESSIONS = 1000
+MAX_USERS_PER_SESSION = 100
 ABSOLUTE_TIMEOUT = timedelta(hours=24)
 IDLE_TIMEOUT = timedelta(hours=2)
 JOIN_RATE_LIMIT = timedelta(seconds=5)
 SESSION_CLEANUP_INTERVAL = timedelta(hours=1)
+RATE_LIMIT_CLEANUP_INTERVAL = timedelta(minutes=10)
+CREATE_RATE_LIMIT = timedelta(seconds=10)
+
+# Input validation patterns
 USERNAME_RE = re.compile(r"^[A-Za-z]{1,20}$")
+SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{16}$")  # 16 chars for new format
+CLIENT_ID_RE = re.compile(r"^[a-zA-Z0-9\-_]{7,36}$")
+
+# Deck validation limits
+DECK_VALUE_MIN = 1
+DECK_VALUE_MAX = 1000
+DECK_SIZE_MIN = 2
+DECK_SIZE_MAX = 20
 
 last_join_time = defaultdict(lambda: datetime.min)
+last_create_time = defaultdict(lambda: datetime.min)
 
 # Session cleanup background task
 async def session_cleanup():
@@ -41,16 +72,55 @@ async def session_cleanup():
         for sid in to_remove:
             del sessions[sid]
 
+# Rate limit cleanup background task
+async def rate_limit_cleanup():
+    while True:
+        await asyncio.sleep(RATE_LIMIT_CLEANUP_INTERVAL.total_seconds())
+        now = datetime.now()
+        cutoff = now - timedelta(minutes=30)
+
+        # Clean up old rate limit entries
+        removed_join = 0
+        for ip in list(last_join_time.keys()):
+            if last_join_time[ip] < cutoff:
+                del last_join_time[ip]
+                removed_join += 1
+
+        removed_create = 0
+        for ip in list(last_create_time.keys()):
+            if last_create_time[ip] < cutoff:
+                del last_create_time[ip]
+                removed_create += 1
+
+
 # Lifespan handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(session_cleanup())
+    cleanup_task = asyncio.create_task(session_cleanup())
+    rate_limit_task = asyncio.create_task(rate_limit_cleanup())
     yield
-    task.cancel()
+    cleanup_task.cancel()
+    rate_limit_task.cancel()
 
 # Initialize FastAPI and Socket.IO
-sio = socketio.AsyncServer(async_mode='asgi', max_http_buffer_size=1_000_000)
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    max_http_buffer_size=1_000_000,
+    cors_allowed_origins=[]  # Socket.IO CORS handled by FastAPI middleware
+)
 app = FastAPI(lifespan=lifespan, title="Pokering Points", version=__version__)
+
+# CORS configuration
+# Configure via CORS_ORIGINS environment variable (comma-separated)
+# Example: CORS_ORIGINS="http://localhost:3000,https://example.com"
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+    max_age=3600,
+)
 
 # Routes first
 @app.get("/", response_class=HTMLResponse)
@@ -58,8 +128,31 @@ async def get_welcome():
     return FileResponse("public/welcome.html")
 
 @app.get("/create")
-async def create_session():
-    session_id = shortuuid.ShortUUID().random(length=6)
+async def create_session(request: Request):
+    # Check global session limit
+    if len(sessions) >= MAX_ACTIVE_SESSIONS:
+        logger.warning(f"Session creation rejected: max limit reached ({MAX_ACTIVE_SESSIONS})")
+        return HTMLResponse(
+            content="<html><body><h1>Server Full</h1><p>Maximum number of active sessions reached. Please try again later.</p></body></html>",
+            status_code=503
+        )
+
+    # Rate limiting based on IP
+    client_ip = request.client.host if request.client else None
+    now = datetime.now()
+
+    if client_ip and now - last_create_time[client_ip] < CREATE_RATE_LIMIT:
+        logger.warning(f"Rate limit exceeded for session creation: {client_ip}")
+        return HTMLResponse(
+            content="<html><body><h1>Too Many Requests</h1><p>Please wait before creating another session.</p></body></html>",
+            status_code=429
+        )
+
+    if client_ip:
+        last_create_time[client_ip] = now
+
+    # Use cryptographically secure session ID generation
+    session_id = secrets.token_urlsafe(12)[:16]  # 16 URL-safe characters
     sessions[session_id] = {
         "users": {},
         "revealed": False,
@@ -72,12 +165,48 @@ async def create_session():
 
 @app.get("/session/{session_id}", response_class=HTMLResponse)
 async def get_session(session_id: str):
+    # Validate session ID format to prevent path traversal or injection
+    if not SESSION_ID_RE.fullmatch(session_id):
+        return HTMLResponse(
+            content="<html><body><h1>Invalid Session ID</h1><p>Session ID must be 6 alphanumeric characters.</p></body></html>",
+            status_code=400
+        )
     return FileResponse("public/index.html")
 
 @app.middleware("http")
-async def add_version_header(request: Request, call_next):
+async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-App-Version"] = __version__
+
+    # Security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Content Security Policy
+    # Note: 'unsafe-inline' is needed for existing inline scripts and event handlers
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*",
+        "font-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'"
+    ]
+    # Only add upgrade-insecure-requests in production (HTTPS)
+    if request.url.scheme == "https":
+        csp_directives.append("upgrade-insecure-requests")
+    response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+
+    # HSTS (only if using HTTPS)
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
     return response
 
 @app.get("/version")
@@ -92,7 +221,7 @@ asgi_app = socketio.ASGIApp(sio, app)
 # Socket.IO handlers
 @sio.event
 async def connect(sid, environ):
-    print(f"Client connected: {sid}")
+    pass  # Connection established
 
 @sio.event
 async def disconnect(sid):
@@ -104,11 +233,27 @@ async def disconnect(sid):
 
 @sio.event
 async def join(sid, data):
+    # Validate data structure
+    if not isinstance(data, dict):
+        await sio.emit("joinFailed", {"reason": "Invalid request format"}, room=sid)
+        return
+
     deck = data.get("deck")
     client_id = data.get("clientId")
     ip_addr = None
     session_id = data.get("sessionId")
     username = data.get("username")
+
+    # Validate session_id format
+    if not isinstance(session_id, str) or not SESSION_ID_RE.fullmatch(session_id):
+        await sio.emit("joinFailed", {"reason": "Invalid session ID"}, room=sid)
+        return
+
+    # Validate client_id format with strict regex
+    if not isinstance(client_id, str) or not CLIENT_ID_RE.fullmatch(client_id):
+        logger.warning(f"Invalid client ID format: {client_id[:20]}")
+        await sio.emit("joinFailed", {"reason": "Invalid client ID"}, room=sid)
+        return
 
     if "asgi.scope" in data and data["asgi.scope"].get("client"):
         ip_addr, _ = data["asgi.scope"]["client"]
@@ -126,6 +271,12 @@ async def join(sid, data):
         await sio.emit("joinFailed", {"reason": "Session not found"}, room=sid)
         return
 
+    # Check user limit per session
+    if len(sessions[session_id]["users"]) >= MAX_USERS_PER_SESSION:
+        logger.warning(f"Session {session_id} full: {MAX_USERS_PER_SESSION} users")
+        await sio.emit("joinFailed", {"reason": "Session is full"}, room=sid)
+        return
+
     if not isinstance(username, str) or not USERNAME_RE.fullmatch(username):
         await sio.emit("joinFailed", {"reason": "Invalid username (letters only, max 20)."}, room=sid)
         return
@@ -133,14 +284,27 @@ async def join(sid, data):
     if sessions[session_id]["hostClientId"] is None:
         sessions[session_id]["hostClientId"] = client_id
         if isinstance(deck, list):
-            try:
-                clean = [int(v) for v in deck if isinstance(v, (int, float))]
-                seen = set()
-                clean = [v for v in clean if not (v in seen or seen.add(v))]
-                if clean:
-                    sessions[session_id]["deck"] = clean
-            except Exception:
-                pass
+            # Validate deck with strict limits
+            if not (DECK_SIZE_MIN <= len(deck) <= DECK_SIZE_MAX):
+                logger.warning(f"Invalid deck size: {len(deck)}")
+            else:
+                try:
+                    clean = []
+                    seen = set()
+                    for v in deck:
+                        if not isinstance(v, (int, float)):
+                            continue
+                        int_v = int(v)
+                        if not (DECK_VALUE_MIN <= int_v <= DECK_VALUE_MAX):
+                            continue
+                        if int_v not in seen:
+                            clean.append(int_v)
+                            seen.add(int_v)
+
+                    if clean and len(clean) >= DECK_SIZE_MIN:
+                        sessions[session_id]["deck"] = clean
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Deck validation error: {e}")
 
     is_host = client_id == sessions[session_id]["hostClientId"]
 
@@ -170,13 +334,31 @@ async def join(sid, data):
 
 @sio.event
 async def vote(sid, data):
+    # Validate data structure
+    if not isinstance(data, dict):
+        return
+
     session_id = data.get("sessionId")
     value = data.get("value")
 
+    # Validate session_id format
+    if not isinstance(session_id, str) or not SESSION_ID_RE.fullmatch(session_id):
+        return
+
     if session_id not in sessions:
         return
+
+    # Validate vote value
     if not (isinstance(value, (int, float)) or value == "?"):
         return
+
+    # Validate vote is in session's deck (or "?")
+    if value != "?":
+        deck = sessions[session_id].get("deck", [1, 2, 3, 5, 8, 13, 21])
+        vote_int = int(value)
+        if vote_int not in deck:
+            logger.warning(f"Vote {vote_int} not in deck for session {session_id}")
+            return
 
     user = sessions[session_id]["users"].get(sid)
     if user:
@@ -235,7 +417,16 @@ async def vote(sid, data):
 
 @sio.event
 async def requestNewRound(sid, data):
+    # Validate data structure
+    if not isinstance(data, dict):
+        return
+
     session_id = data.get("sessionId")
+
+    # Validate session_id format
+    if not isinstance(session_id, str) or not SESSION_ID_RE.fullmatch(session_id):
+        return
+
     old_session = sessions.get(session_id)
 
     if old_session is None:
@@ -246,7 +437,7 @@ async def requestNewRound(sid, data):
         await sio.emit("joinFailed", {"reason": "Only host can request new round"}, room=sid)
         return
 
-    new_id = shortuuid.ShortUUID().random(length=6)
+    new_id = secrets.token_urlsafe(12)[:16]  # 16 URL-safe characters
     sessions[new_id] = {
         "users": {},
         "revealed": False,
@@ -269,8 +460,20 @@ async def requestNewRound(sid, data):
 
 @sio.event
 async def hostVotingDecision(sid, data):
+    # Validate data structure
+    if not isinstance(data, dict):
+        return
+
     session_id = data.get("sessionId")
     wants_to_vote = data.get("wantsToVote")
+
+    # Validate session_id format
+    if not isinstance(session_id, str) or not SESSION_ID_RE.fullmatch(session_id):
+        return
+
+    # Validate wantsToVote is boolean
+    if not isinstance(wants_to_vote, bool):
+        return
 
     if session_id not in sessions:
         return
@@ -282,4 +485,11 @@ async def hostVotingDecision(sid, data):
 
 # Start server
 if __name__ == "__main__":
-    uvicorn.run("server:asgi_app", host="0.0.0.0", port=8000, reload=False)
+    # Only enable reload in development
+    reload_enabled = ENVIRONMENT == "development"
+    uvicorn.run(
+        "server:asgi_app",
+        host=SERVER_HOST,
+        port=SERVER_PORT,
+        reload=reload_enabled
+    )
