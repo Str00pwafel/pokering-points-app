@@ -1,6 +1,6 @@
 body {
-	background-color: #001f3f;
-	color: white;
+	background-color: var(--primary-bg);
+	color: var(--text-primary);
 	font-family: sans-serif;
 	display: flex;
 	flex-direction: column;
@@ -14,6 +14,81 @@ img.logo {
 	width: 350px;
 	max-width: 80%;
 	margin-bottom: 20px;
+	display: block;
+}
+
+/* Christmas theme decorations */
+.logo-container {
+	position: relative;
+	display: inline-block;
+	width: 350px;
+	max-width: 80%;
+	margin-bottom: 20px;
+}
+
+.logo-container img.logo {
+	max-width: 100%;
+	margin-bottom: 0;
+}
+
+.santa-hat-overlay {
+	position: absolute;
+	left: 50%;
+	pointer-events: none;
+	z-index: 10;
+	--hat-rotation: -15deg;
+	animation: hatWiggle 3s ease-in-out infinite;
+	/* Size, position, and rotation set via JavaScript from theme config */
+}
+
+@keyframes hatWiggle {
+	0%, 100% { transform: rotate(var(--hat-rotation)); }
+	50% { transform: rotate(calc(var(--hat-rotation) - 5deg)); }
+}
+
+.snowflakes {
+	position: absolute;
+	top: 0;
+	left: 50%;
+	transform: translateX(calc(-50% - 5px));
+	width: 120%;
+	height: 150%;
+	pointer-events: none;
+	overflow: visible;
+}
+
+.snowflake {
+	position: absolute;
+	top: -10px;
+	color: #ffffff;
+	font-size: 20px;
+	opacity: 0.8;
+	animation: snowfall 5s linear infinite;
+	text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+@keyframes snowfall {
+	0% {
+		transform: translateY(0) rotate(0deg);
+		opacity: 0.8;
+	}
+	100% {
+		transform: translateY(400px) rotate(360deg);
+		opacity: 0;
+	}
+}
+
+/* Accessibility: Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+	.santa-hat-overlay {
+		animation: none;
+		transform: rotate(-15deg);
+	}
+
+	.snowflake {
+		animation: none;
+		opacity: 0.3;
+	}
 }
 
 h1 {
@@ -25,18 +100,18 @@ button {
 	font-size: 18px;
 	border-radius: 5px;
 	border: none;
-	background-color: #0074D9;
-	color: white;
+	background-color: var(--primary-action);
+	color: var(--text-primary);
 	cursor: pointer;
 }
 
 button:hover {
-	background-color: #005fa3;
+	background-color: var(--primary-hover);
 }
 
 .footer {
 	position: absolute;
 	bottom: 10px;
 	font-size: 12px;
-	color: #ccc;
+	color: var(--text-secondary);
 }

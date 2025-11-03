@@ -1,8 +1,8 @@
 body {
 	margin: 0;
 	padding: 0;
-	background-color: #001f3f;
-	color: white;
+	background-color: var(--primary-bg);
+	color: var(--text-primary);
 	font-family: sans-serif;
 	height: 100vh;
 	overflow: hidden;
@@ -17,13 +17,13 @@ button {
 	font-size: 16px;
 	border: none;
 	border-radius: 5px;
-	background-color: #0074D9;
-	color: white;
+	background-color: var(--primary-action);
+	color: var(--text-primary);
 	cursor: pointer;
 }
 
 button:hover {
-	background-color: #005fa3;
+	background-color: var(--primary-hover);
 }
 
 .hidden {
@@ -43,7 +43,7 @@ button:hover {
 	height: 40px;
 	padding: 10px 15px;
 	font-size: 18px;
-	background-color: #0074D9;
+	background-color: var(--primary-action);
 	border-radius: 10px;
 	cursor: pointer;
 	display: flex;
@@ -53,7 +53,7 @@ button:hover {
 }
 
 .card.selected {
-	background-color: #2ECC40;
+	background-color: var(--success);
 }
 
 #countdown {
@@ -70,7 +70,7 @@ button:hover {
 }
 
 .vote-card {
-	background-color: #003366;
+	background-color: var(--card-bg);
 	border-radius: 12px;
 	text-align: center;
 	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
@@ -93,7 +93,7 @@ button:hover {
 .vote-summary {
 	font-weight: bold;
 	margin-bottom: 10px;
-	color: #ccc;
+	color: var(--text-secondary);
 	text-align: center;
 	margin-top: 20px;
 }
@@ -124,8 +124,8 @@ button:hover {
 
 .vote-value {
 	font-size: 24px;
-	background: #2ECC40;
-	color: #001f3f;
+	background: var(--success);
+	color: var(--primary-bg);
 	border-radius: 8px;
 	padding: 10px 20px;
 	min-width: 40px;
@@ -143,25 +143,27 @@ button:hover {
 	position: absolute;
 	top: 20px;
 	left: 20px;
-	color: white;
+	color: var(--text-primary);
 	text-decoration: none;
-	background: #0074D9;
+	background: var(--primary-action);
 	padding: 6px 12px;
 	border-radius: 5px;
 	font-size: 14px;
 }
 
 #newSessionLink:hover {
-	background: #005fa3;
+	background: var(--primary-hover);
 }
 
 #newRoundBtn {
 	margin-top: 20px;
-	background-color: #FF851B;
+	background-color: var(--secondary-action);
+	color: var(--primary-bg);
 }
 
 #newRoundBtn:hover {
-	background-color: #cc6c16;
+	background-color: var(--secondary-hover);
+	color: var(--primary-bg);
 }
 
 #modalBackdrop {
@@ -178,8 +180,8 @@ button:hover {
 }
 
 #modalContent {
-	background: #003366;
-	color: white;
+	background: var(--modal-bg);
+	color: var(--text-primary);
 	padding: 24px;
 	border-radius: 12px;
 	text-align: center;
@@ -208,7 +210,7 @@ button:hover {
 }
 
 #modalContent .error-message {
-	color: #FF4136;
+	color: var(--error);
 	font-size: 13px;
 	margin-top: 8px;
 }
@@ -216,16 +218,16 @@ button:hover {
 #modalContent button {
 	padding: 8px 16px;
 	border-radius: 6px;
-	background-color: #0074D9;
+	background-color: var(--primary-action);
 	border: none;
-	color: white;
+	color: var(--text-primary);
 	font-weight: bold;
 	margin: 10px 8px 0;
 	cursor: pointer;
 }
 
 #modalContent button:hover {
-	background-color: #005fa3;
+	background-color: var(--primary-hover);
 }
 
 .flex-container {

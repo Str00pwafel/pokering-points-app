@@ -1,0 +1,36 @@
+/* Theme Variables - Dynamically updated by theme-loader.js */
+:root {
+    /* Background colors */
+    --primary-bg: #001f3f;
+    --card-bg: #003366;
+    --modal-bg: #003366;
+
+    /* Action colors */
+    --primary-action: #0074D9;
+    --primary-hover: #005fa3;
+    --secondary-action: #FF851B;
+    --secondary-hover: #cc6c16;
+
+    /* State colors */
+    --success: #2ECC40;
+    --error: #FF4136;
+
+    /* Text colors */
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
+
+    /* Smooth transitions for theme changes */
+    transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* Apply smooth transitions to all themed elements */
+* {
+    transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+}
+
+/* Prevent transitions on animations to avoid conflicts */
+@media (prefers-reduced-motion: no-preference) {
+    .snowflake, .santa-hat-overlay {
+        transition: none;
+    }
+}

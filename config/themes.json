@@ -1,0 +1,58 @@
+{
+  "themes": {
+    "default": {
+      "name": "Default",
+      "colors": {
+        "primary-bg": "#001f3f",
+        "primary-action": "#0074D9",
+        "primary-hover": "#005fa3",
+        "success": "#2ECC40",
+        "card-bg": "#003366",
+        "modal-bg": "#003366",
+        "error": "#FF4136",
+        "secondary-action": "#FF851B",
+        "secondary-hover": "#cc6c16",
+        "text-primary": "#ffffff",
+        "text-secondary": "#cccccc"
+      },
+      "logo": "beardcraft.png"
+    },
+    "christmas": {
+      "name": "Christmas",
+      "colors": {
+        "primary-bg": "#0a3d0a",
+        "primary-action": "#c41e3a",
+        "primary-hover": "#8b0000",
+        "success": "#2ECC40",
+        "card-bg": "#1a5c1a",
+        "modal-bg": "#1a5c1a",
+        "error": "#FF4136",
+        "secondary-action": "#ffd700",
+        "secondary-hover": "#daa520",
+        "text-primary": "#ffffff",
+        "text-secondary": "#e0e0e0"
+      },
+      "logo": "beardcraft.png",
+      "decorations": {
+        "santaHat": {
+          "enabled": true,
+          "size": 120,
+          "top": -10,
+          "marginLeft": -85,
+          "rotation": -15
+        },
+        "snowflakes": {
+          "enabled": true,
+          "count": 8
+        }
+      }
+    }
+  },
+  "schedule": [
+    {
+      "theme": "christmas",
+      "start": "12-01",
+      "end": "12-31"
+    }
+  ]
+}

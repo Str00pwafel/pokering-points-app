@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import re
@@ -57,6 +58,10 @@ last_create_time = defaultdict(lambda: datetime.min)
 
 # Socket.IO rate limiting per socket
 socket_rate_limits = defaultdict(lambda: defaultdict(list))
+
+# Theme configuration cache
+theme_config = None
+theme_config_mtime = None
 
 # Session cleanup background task
 async def session_cleanup():
@@ -256,9 +261,107 @@ async def add_security_headers(request: Request, call_next):
 
     return response
 
+def load_theme_config():
+    """Load theme config with caching and file modification check"""
+    global theme_config, theme_config_mtime
+
+    theme_file = "config/themes.json"
+
+    try:
+        # Check if file exists
+        if not os.path.exists(theme_file):
+            return None
+
+        # Get file modification time
+        current_mtime = os.path.getmtime(theme_file)
+
+        # Return cached config if file hasn't changed
+        if theme_config is not None and theme_config_mtime == current_mtime:
+            return theme_config
+
+        # Load fresh config
+        with open(theme_file, "r") as f:
+            config = json.load(f)
+
+        # Cache config and mtime
+        theme_config = config
+        theme_config_mtime = current_mtime
+
+        logger.info(f"Theme config loaded and cached (mtime: {current_mtime})")
+        return config
+
+    except Exception as e:
+        logger.error(f"Error loading theme config: {e}")
+        return None
+
 @app.get("/version")
 async def get_version():
     return {"version": __version__}
+
+@app.get("/theme")
+async def get_theme():
+    """Get active theme based on current date"""
+    # Default theme fallback
+    default_theme = {
+        "name": "Default",
+        "colors": {
+            "primary-bg": "#001f3f",
+            "primary-action": "#0074D9",
+            "primary-hover": "#005fa3",
+            "success": "#2ECC40",
+            "card-bg": "#003366",
+            "modal-bg": "#003366",
+            "error": "#FF4136",
+            "secondary-action": "#FF851B",
+            "secondary-hover": "#cc6c16",
+            "text-primary": "#ffffff",
+            "text-secondary": "#cccccc"
+        },
+        "logo": "beardcraft.png"
+    }
+
+    try:
+        # Load config from cache or file
+        config = load_theme_config()
+        if not config:
+            return default_theme
+
+        # Get current date (month-day format)
+        now = datetime.now()
+        current_date = now.strftime("%m-%d")
+
+        # Check schedule for active theme
+        active_theme_name = "default"
+        for schedule_entry in config.get("schedule", []):
+            start = schedule_entry.get("start")
+            end = schedule_entry.get("end")
+            theme = schedule_entry.get("theme")
+
+            if start and end and theme:
+                # Simple date range check (assumes same year)
+                if start <= current_date <= end:
+                    active_theme_name = theme
+                    break
+
+        # Return the active theme data
+        theme_data = config["themes"].get(active_theme_name, config["themes"]["default"])
+
+        # Add decorations if present
+        result = {
+            "name": theme_data["name"],
+            "colors": theme_data["colors"],
+            "logo": theme_data["logo"]
+        }
+
+        # Include decorations config if present
+        if "decorations" in theme_data:
+            result["decorations"] = theme_data["decorations"]
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error loading theme: {e}")
+        return default_theme
 
 @app.get("/health")
 async def health_check():
