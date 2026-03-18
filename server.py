@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import logging.handlers
 import os
 import re
 import secrets
@@ -17,12 +18,33 @@ from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from version import __version__
 
-# Configure logging (errors only to keep logs small)
-logging.basicConfig(
-    level=logging.WARNING,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure logging with file rotation
+LOG_DIR = os.getenv("LOG_DIR", "logs")
+LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", 5 * 1024 * 1024))  # 5MB default
+LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", 3))  # Keep 3 rotated files
+
+os.makedirs(LOG_DIR, exist_ok=True)
+
+log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Console handler (warnings and above to keep terminal clean)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.WARNING)
+console_handler.setFormatter(logging.Formatter(log_format))
+
+# File handler with rotation (info and above for audit trail)
+file_handler = logging.handlers.RotatingFileHandler(
+    os.path.join(LOG_DIR, "pokering.log"),
+    maxBytes=LOG_MAX_BYTES,
+    backupCount=LOG_BACKUP_COUNT,
+)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter(log_format))
+
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 # Configuration from environment variables
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
@@ -213,6 +235,7 @@ async def create_session(request: Request):
         "lastActivity": datetime.now(timezone.utc),
         "deck": [1, 2, 3, 5, 8, 13, 21],
     }
+    logger.info(f"Session created: {session_id} by {client_ip}")
     return RedirectResponse(f"/session/{session_id}")
 
 @app.get("/session/{session_id}", response_class=HTMLResponse)
@@ -433,7 +456,9 @@ async def connect(sid, environ):
 async def disconnect(sid):
     for session_id in sessions:
         if sid in sessions[session_id]["users"]:
+            username = sessions[session_id]["users"][sid].get("username", "unknown")
             del sessions[session_id]["users"][sid]
+            logger.info(f"User disconnected: {username} from session {session_id}")
             await sio.emit('usersUpdate', sessions[session_id]["users"], room=session_id)
             break
 
@@ -537,6 +562,8 @@ async def join(sid, data):
 
     sessions[session_id]["users"][sid] = user_data
     sessions[session_id]["lastActivity"] = datetime.now(timezone.utc)
+
+    logger.info(f"User joined: {username} -> session {session_id} (host={is_host})")
 
     await sio.enter_room(sid, session_id)
     await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
@@ -671,6 +698,8 @@ async def requestNewRound(sid, data):
 
     username_map = {sockid: u["username"] for sockid, u in old_session.get("users", {}).items()}
     wants_to_vote_map = {sockid: u.get("wantsToVote") for sockid, u in old_session.get("users", {}).items()}
+
+    logger.info(f"New round: {session_id} -> {new_id} by host {user.get('username', 'unknown')}")
 
     await sio.emit("redirectToNewSession", {
         "url": f"/session/{new_id}",
