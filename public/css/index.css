@@ -139,9 +139,9 @@ button:hover {
 	text-overflow: ellipsis;
 }
 
-#newSessionLink {
+#newSessionLink,
+#deckSelector {
 	position: absolute;
-	top: 20px;
 	left: 20px;
 	color: var(--text-primary);
 	text-decoration: none;
@@ -149,10 +149,29 @@ button:hover {
 	padding: 6px 12px;
 	border-radius: 5px;
 	font-size: 14px;
+	border: none;
+	cursor: pointer;
+	box-sizing: border-box;
+	width: 180px;
+	text-align: center;
 }
 
-#newSessionLink:hover {
+#newSessionLink {
+	top: 20px;
+}
+
+#deckSelector {
+	top: 55px;
+}
+
+#newSessionLink:hover,
+#deckSelector:hover:not(:disabled) {
 	background: var(--primary-hover);
+}
+
+#deckSelector:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
 }
 
 #newRoundBtn {

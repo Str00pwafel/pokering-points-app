@@ -75,6 +75,14 @@ DECK_VALUE_MAX = 1000
 DECK_SIZE_MIN = 2
 DECK_SIZE_MAX = 20
 
+# Deck presets (? is always valid as "unsure")
+DECK_PRESETS = {
+    "fibonacci": [1, 2, 3, 5, 8, 13, 21, "?"],
+    "hours": [1, 2, 4, 8, 16, 24, 40, "?"],
+    "tshirt": ["XS", "S", "M", "L", "XL", "XXL", "?"],
+}
+DEFAULT_DECK_TYPE = "fibonacci"
+
 last_join_time = defaultdict(lambda: datetime.min)
 last_create_time = defaultdict(lambda: datetime.min)
 
@@ -475,7 +483,6 @@ async def join(sid, data):
         await sio.emit("joinFailed", {"reason": "Invalid request format"}, room=sid)
         return
 
-    deck = data.get("deck")
     client_id = data.get("clientId")
     ip_addr = None
     session_id = data.get("sessionId")
@@ -520,28 +527,11 @@ async def join(sid, data):
 
     if sessions[session_id]["hostClientId"] is None:
         sessions[session_id]["hostClientId"] = client_id
-        if isinstance(deck, list):
-            # Validate deck with strict limits
-            if not (DECK_SIZE_MIN <= len(deck) <= DECK_SIZE_MAX):
-                logger.warning(f"Invalid deck size: {len(deck)}")
-            else:
-                try:
-                    clean = []
-                    seen = set()
-                    for v in deck:
-                        if not isinstance(v, (int, float)):
-                            continue
-                        int_v = int(v)
-                        if not (DECK_VALUE_MIN <= int_v <= DECK_VALUE_MAX):
-                            continue
-                        if int_v not in seen:
-                            clean.append(int_v)
-                            seen.add(int_v)
-
-                    if clean and len(clean) >= DECK_SIZE_MIN:
-                        sessions[session_id]["deck"] = clean
-                except (ValueError, TypeError) as e:
-                    logger.warning(f"Deck validation error: {e}")
+        # Set deck from preset if provided
+        deck_type = data.get("deckType", DEFAULT_DECK_TYPE)
+        if deck_type in DECK_PRESETS:
+            sessions[session_id]["deck"] = DECK_PRESETS[deck_type]
+            sessions[session_id]["deckType"] = deck_type
 
     is_host = client_id == sessions[session_id]["hostClientId"]
 
@@ -566,6 +556,11 @@ async def join(sid, data):
     logger.info(f"User joined: {username} -> session {session_id} (host={is_host})")
 
     await sio.enter_room(sid, session_id)
+
+    # Tell the joining client which deck this session uses
+    session_deck_type = sessions[session_id].get("deckType", DEFAULT_DECK_TYPE)
+    await sio.emit("deckChanged", {"deckType": session_deck_type}, room=sid)
+
     await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
 
     if is_host and "wantsToVote" not in data:
@@ -591,17 +586,12 @@ async def vote(sid, data):
     if session_id not in sessions:
         return
 
-    # Validate vote value
-    if not (isinstance(value, (int, float)) or value == "?"):
+    # Validate vote is a value in the session's deck
+    deck = sessions[session_id].get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE])
+    vote_check = int(value) if isinstance(value, (int, float)) else value
+    if vote_check not in deck:
+        logger.warning(f"Vote {value} not in deck for session {session_id}")
         return
-
-    # Validate vote is in session's deck (or "?")
-    if value != "?":
-        deck = sessions[session_id].get("deck", [1, 2, 3, 5, 8, 13, 21])
-        vote_int = int(value)
-        if vote_int not in deck:
-            logger.warning(f"Vote {vote_int} not in deck for session {session_id}")
-            return
 
     user = sessions[session_id]["users"].get(sid)
     if user:
@@ -627,20 +617,30 @@ async def vote(sid, data):
                     await asyncio.sleep(1)
                     count -= 1
 
-                deck = sessions[session_id].get("deck", [1, 2, 3, 5, 8, 13, 21])
-                index_of = {v: i for i, v in enumerate(deck)}
+                deck = sessions[session_id].get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE])
+                # Build index lookup, excluding "?" from stats
+                index_of = {v: i for i, v in enumerate(deck) if v != "?"}
 
-                voted = [
-                    (u["username"], int(u["vote"]))
-                    for u in sessions[session_id]["users"].values()
-                    if isinstance(u["vote"], (int, float)) and int(u["vote"]) in index_of
-                ]
+                # Collect votes that are in the deck (excluding "?")
+                voted = []
+                for u in sessions[session_id]["users"].values():
+                    v = u["vote"]
+                    if v == "?" or v is None:
+                        continue
+                    # Normalize numeric votes to int for lookup
+                    check = int(v) if isinstance(v, (int, float)) else v
+                    if check in index_of:
+                        voted.append((u["username"], check))
 
                 vote_stats = {}
                 if voted:
-                    avg = sum(v for _, v in voted) / len(voted)
-                    vote_stats["average"] = round(avg, 2)
+                    # Average only makes sense for numeric decks
+                    numeric_votes = [v for _, v in voted if isinstance(v, (int, float))]
+                    if numeric_votes:
+                        avg = sum(numeric_votes) / len(numeric_votes)
+                        vote_stats["average"] = round(avg, 2)
 
+                    # Median and outliers work for all deck types via index position
                     idxs = sorted(index_of[v] for _, v in voted)
                     median_idx = idxs[len(idxs) // 2]
                     vote_stats["median"] = deck[median_idx]
@@ -686,6 +686,12 @@ async def requestNewRound(sid, data):
         await sio.emit("joinFailed", {"reason": "Only host can request new round"}, room=sid)
         return
 
+    # Determine deck for new round
+    deck_type = data.get("deckType", DEFAULT_DECK_TYPE)
+    if deck_type not in DECK_PRESETS:
+        deck_type = DEFAULT_DECK_TYPE
+    new_deck = DECK_PRESETS[deck_type]
+
     new_id = secrets.token_urlsafe(12)[:16]  # 16 URL-safe characters
     sessions[new_id] = {
         "users": {},
@@ -693,21 +699,58 @@ async def requestNewRound(sid, data):
         "hostClientId": old_session.get("hostClientId"),
         "createdAt": datetime.now(timezone.utc),
         "lastActivity": datetime.now(timezone.utc),
-        "deck": old_session.get("deck", [1, 2, 3, 5, 8, 13, 21]),
+        "deck": new_deck,
+        "deckType": deck_type,
     }
 
     username_map = {sockid: u["username"] for sockid, u in old_session.get("users", {}).items()}
     wants_to_vote_map = {sockid: u.get("wantsToVote") for sockid, u in old_session.get("users", {}).items()}
 
-    logger.info(f"New round: {session_id} -> {new_id} by host {user.get('username', 'unknown')}")
+    logger.info(f"New round: {session_id} -> {new_id} by host {user.get('username', 'unknown')} (deck: {deck_type})")
 
     await sio.emit("redirectToNewSession", {
         "url": f"/session/{new_id}",
         "usernames": username_map,
-        "wantsToVote": wants_to_vote_map
+        "wantsToVote": wants_to_vote_map,
+        "deckType": deck_type
     }, room=session_id)
 
     del sessions[session_id]
+
+@sio.event
+async def changeDeck(sid, data):
+    if not isinstance(data, dict):
+        return
+
+    session_id = data.get("sessionId")
+    deck_type = data.get("deckType")
+
+    if not isinstance(session_id, str) or not SESSION_ID_RE.fullmatch(session_id):
+        return
+
+    session = sessions.get(session_id)
+    if session is None:
+        return
+
+    # Only host can change deck
+    user = session["users"].get(sid)
+    if not user or not user.get("isHost"):
+        return
+
+    # Only allow if no votes have been cast
+    has_votes = any(u["vote"] is not None for u in session["users"].values())
+    if has_votes:
+        return
+
+    # Validate deck type
+    if deck_type not in DECK_PRESETS:
+        return
+
+    session["deck"] = DECK_PRESETS[deck_type]
+    session["deckType"] = deck_type
+    logger.info(f"Deck changed to {deck_type} in session {session_id}")
+
+    await sio.emit("deckChanged", {"deckType": deck_type}, room=session_id)
 
 @sio.event
 async def hostVotingDecision(sid, data):

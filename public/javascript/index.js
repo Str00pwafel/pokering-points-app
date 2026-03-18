@@ -52,12 +52,23 @@ function promptUsername() {
     localStorage.setItem("jiraPokerUsername", username);
     document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
     document.getElementById('mainContent').classList.remove('hidden');
-    socket.emit('join', { sessionId, username, clientId, deck: cardValues.filter(v => typeof v === 'number') });
-  }, true);
+
+    const hostVoteDecision = sessionStorage.getItem("jiraPokerHostVoteDecision");
+    socket.emit('join', {
+      sessionId,
+      username,
+      clientId,
+      deckType: currentDeckType,
+      wantsToVote: hostVoteDecision !== null ? (hostVoteDecision === "true") : undefined
+    });
+  }, true, false, true, username);
 }
 
 window.addEventListener('load', () => {
-  if (isValidUsername(username)) {
+  // If username is in sessionStorage, this is a redirect (new round) - join directly
+  const sessionUsername = sessionStorage.getItem("jiraPokerUsername");
+  if (sessionUsername && isValidUsername(sessionUsername)) {
+    username = sessionUsername;
     const hostVoteDecision = sessionStorage.getItem("jiraPokerHostVoteDecision");
     document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
     document.getElementById('mainContent').classList.remove('hidden');
@@ -66,7 +77,7 @@ window.addEventListener('load', () => {
       sessionId,
       username,
       clientId,
-      deck: cardValues.filter(v => typeof v === 'number'),
+      deckType: currentDeckType,
       wantsToVote: hostVoteDecision !== null ? (hostVoteDecision === "true") : undefined
     });
   } else {
@@ -75,14 +86,44 @@ window.addEventListener('load', () => {
   updateVersionBadge();
 });
 
-const cardValues = [1, 2, 3, 5, 8, 13, 21, "?"];
+const DECK_PRESETS = {
+  fibonacci: [1, 2, 3, 5, 8, 13, 21, "?"],
+  hours: [1, 2, 4, 8, 16, 24, 40, "?"],
+  tshirt: ["XS", "S", "M", "L", "XL", "XXL", "?"]
+};
+
+let currentDeckType = sessionStorage.getItem("jiraPokerDeckType") || "fibonacci";
+if (!DECK_PRESETS[currentDeckType]) currentDeckType = "fibonacci";
+let cardValues = DECK_PRESETS[currentDeckType];
+document.getElementById('deckSelector').value = currentDeckType;
 const cardContainer = document.getElementById('cardOptions');
-cardValues.forEach(value => {
-  const card = document.createElement('div');
-  card.classList.add('card');
-  card.innerText = value;
-  card.onclick = () => selectCard(card, value);
-  cardContainer.appendChild(card);
+
+function renderCards() {
+  cardContainer.innerHTML = '';
+  selectedCard = null;
+  cardValues.forEach(value => {
+    const card = document.createElement('div');
+    card.classList.add('card');
+    card.innerText = value;
+    card.onclick = () => selectCard(card, value);
+    cardContainer.appendChild(card);
+  });
+}
+
+renderCards();
+
+document.getElementById('deckSelector').addEventListener('change', (e) => {
+  const newDeckType = e.target.value;
+  socket.emit('changeDeck', { sessionId, deckType: newDeckType });
+});
+
+socket.on('deckChanged', ({ deckType }) => {
+  if (DECK_PRESETS[deckType]) {
+    currentDeckType = deckType;
+    cardValues = DECK_PRESETS[currentDeckType];
+    document.getElementById('deckSelector').value = currentDeckType;
+    renderCards();
+  }
 });
 
 function selectCard(element, value) {
@@ -111,7 +152,7 @@ function startNewRound() {
     "<span style='color:green;font-weight:bold;'>Everyone will be redirected.</span>",
     () => {
       sessionStorage.setItem("jiraPokerUsername", username);
-      socket.emit('requestNewRound', { sessionId });
+      socket.emit('requestNewRound', { sessionId, deckType: currentDeckType });
     }
   );
 }
@@ -128,7 +169,10 @@ function copyLink() {
   });
 }
 
-socket.on('redirectToNewSession', ({ url, usernames, wantsToVote }) => {
+socket.on('redirectToNewSession', ({ url, usernames, wantsToVote, deckType }) => {
+  if (deckType && DECK_PRESETS[deckType]) {
+    sessionStorage.setItem("jiraPokerDeckType", deckType);
+  }
   const mySocketId = socket.id;
   const myName = usernames?.[mySocketId];
   const myWantsToVote = wantsToVote?.[mySocketId];
@@ -149,6 +193,13 @@ socket.on('usersUpdate', users => {
   const isHost = myUser?.isHost;
 
   document.getElementById('newRoundBtn').style.display = isHost ? 'inline-block' : 'none';
+  document.getElementById('deckSelector').style.display = isHost ? 'inline-block' : 'none';
+
+  // Grey out deck selector if votes have been cast
+  if (isHost) {
+    const hasVotes = Object.values(users).some(u => u.vote !== null);
+    document.getElementById('deckSelector').disabled = hasVotes;
+  }
 
   if (isHost && !window.hasBeenAskedToVote) {
     window.hasBeenAskedToVote = true;
@@ -251,7 +302,7 @@ socket.on('joinFailed', ({ reason }) => {
   });
 });
 
-function showModal(message, onConfirm, withInput = false, yesNoMode = false) {
+function showModal(message, onConfirm, withInput = false, yesNoMode = false, hideCancel = false, prefill = '') {
   const backdrop = document.getElementById('modalBackdrop');
   const messageEl = document.getElementById('modalMessage');
   const confirmBtn = document.getElementById('modalConfirm');
@@ -259,9 +310,10 @@ function showModal(message, onConfirm, withInput = false, yesNoMode = false) {
   const errorEl = document.getElementById('modalError');
 
   messageEl.innerHTML = withInput
-    ? `${message}<br><input type="text" id="modalInput" maxlength="20">`
+    ? `${message}<br><input type="text" id="modalInput" maxlength="20" value="${prefill}">`
     : message;
   errorEl.textContent = "";
+  cancelBtn.style.display = hideCancel ? 'none' : '';
 
   if (yesNoMode) {
     confirmBtn.textContent = "Yes";
