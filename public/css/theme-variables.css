@@ -23,14 +23,9 @@
     transition: background-color 0.4s ease, color 0.4s ease;
 }
 
-/* Apply smooth transitions to all themed elements */
-* {
+/* Smooth transitions for themed elements only */
+body, button, .card, .vote-card, .vote-value,
+#modalContent, #newSessionLink, #deckSelector,
+#newRoundBtn, #userList, .host-left-message {
     transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
-}
-
-/* Prevent transitions on animations to avoid conflicts */
-@media (prefers-reduced-motion: no-preference) {
-    .snowflake, .santa-hat-overlay, .dutch-flag, .crown-overlay {
-        transition: none;
-    }
 }

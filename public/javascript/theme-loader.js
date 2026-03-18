@@ -38,33 +38,8 @@
 // Inlined Santa Hat SVG (avoids HTTP request)
 const SANTA_HAT_SVG = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA4MCA4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZyBpZD0ic2FudGEtaGF0Ij4KICAgIDxwYXRoIGQ9Ik0gMjUgNTAgUSAzMCAyMCwgNDUgMTUgUSA2MCAxOCwgNjUgNTAgWiIgZmlsbD0iI2M0MWUzYSIgc3Ryb2tlPSIjOGIwMDAwIiBzdHJva2Utd2lkdGg9IjEiLz4KICAgIDxlbGxpcHNlIGN4PSI0NSIgY3k9IjUwIiByeD0iMjIiIHJ5PSI1IiBmaWxsPSIjZmZmZmZmIi8+CiAgICA8Y2lyY2xlIGN4PSI0NSIgY3k9IjEzIiByPSI2IiBmaWxsPSIjZmZmZmZmIi8+CiAgICA8cGF0aCBkPSJNIDI1IDUwIFEgMzAgMjAsIDQ1IDE1IFEgNDAgMjAsIDM4IDUwIFoiIGZpbGw9IiNhMDEwMjAiIG9wYWNpdHk9IjAuNCIvPgogIDwvZz4KPC9zdmc+Cg==';
 
-// Inlined Crown SVG for Koningsdag - hand-drawn golden crown
-const CROWN_SVG = 'data:image/svg+xml;base64,' + btoa(`
-<svg width="100" height="90" viewBox="0 0 100 90" xmlns="http://www.w3.org/2000/svg">
-  <g fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-    <!-- Left side going up to left point -->
-    <path d="M 18 65 C 14 55, 12 45, 16 35"/>
-    <!-- Left circle ornament -->
-    <circle cx="16" cy="30" r="4" fill="none"/>
-    <!-- Left point down into left valley -->
-    <path d="M 18 26 C 22 32, 28 42, 32 48"/>
-    <!-- Left valley up to center point -->
-    <path d="M 32 48 C 36 38, 42 22, 50 14"/>
-    <!-- Center circle ornament -->
-    <circle cx="50" cy="10" r="4.5" fill="none"/>
-    <!-- Center point down into right valley -->
-    <path d="M 50 14 C 58 22, 64 38, 68 48"/>
-    <!-- Right valley up to right point -->
-    <path d="M 68 48 C 72 42, 78 32, 82 26"/>
-    <!-- Right circle ornament -->
-    <circle cx="84" cy="30" r="4" fill="none"/>
-    <!-- Right point down to base -->
-    <path d="M 88 35 C 88 45, 86 55, 82 65"/>
-    <!-- Base band - double ellipse -->
-    <ellipse cx="50" cy="68" rx="36" ry="8" stroke-width="4"/>
-    <ellipse cx="50" cy="68" rx="36" ry="8" stroke-width="1.5" stroke="#FFFFFF"/>
-  </g>
-</svg>`);
+// Inlined Crown SVG for Koningsdag - hand-drawn crown (pre-encoded)
+const CROWN_SVG = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjkwIiB2aWV3Qm94PSIwIDAgMTAwIDkwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGRkZGRiIgc3Ryb2tlLXdpZHRoPSIzLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+CiAgICA8cGF0aCBkPSJNIDE4IDY1IEMgMTQgNTUsIDEyIDQ1LCAxNiAzNSIvPgogICAgPGNpcmNsZSBjeD0iMTYiIGN5PSIzMCIgcj0iNCIgZmlsbD0ibm9uZSIvPgogICAgPHBhdGggZD0iTSAxOCAyNiBDIDIyIDMyLCAyOCA0MiwgMzIgNDgiLz4KICAgIDxwYXRoIGQ9Ik0gMzIgNDggQyAzNiAzOCwgNDIgMjIsIDUwIDE0Ii8+CiAgICA8Y2lyY2xlIGN4PSI1MCIgY3k9IjEwIiByPSI0LjUiIGZpbGw9Im5vbmUiLz4KICAgIDxwYXRoIGQ9Ik0gNTAgMTQgQyA1OCAyMiwgNjQgMzgsIDY4IDQ4Ii8+CiAgICA8cGF0aCBkPSJNIDY4IDQ4IEMgNzIgNDIsIDc4IDMyLCA4MiAyNiIvPgogICAgPGNpcmNsZSBjeD0iODQiIGN5PSIzMCIgcj0iNCIgZmlsbD0ibm9uZSIvPgogICAgPHBhdGggZD0iTSA4OCAzNSBDIDg4IDQ1LCA4NiA1NSwgODIgNjUiLz4KICAgIDxlbGxpcHNlIGN4PSI1MCIgY3k9IjY4IiByeD0iMzYiIHJ5PSI4IiBzdHJva2Utd2lkdGg9IjQiLz4KICAgIDxlbGxpcHNlIGN4PSI1MCIgY3k9IjY4IiByeD0iMzYiIHJ5PSI4IiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlPSIjRkZGRkZGIi8+CiAgPC9nPgo8L3N2Zz4=';
 
 function cleanupDecorations(logo) {
     // Remove logo container wrapper and unwrap logo if it exists
