@@ -251,7 +251,7 @@ async def get_session(session_id: str):
     # Validate session ID format to prevent path traversal or injection
     if not SESSION_ID_RE.fullmatch(session_id):
         return HTMLResponse(
-            content="<html><body><h1>Invalid Session ID</h1><p>Session ID must be 6 alphanumeric characters.</p></body></html>",
+            content="<html><body><h1>Invalid Session ID</h1><p>Session ID must be 16 alphanumeric characters.</p></body></html>",
             status_code=400
         )
     return FileResponse("public/index.html")
@@ -719,6 +719,10 @@ async def requestNewRound(sid, data):
 
 @sio.event
 async def changeDeck(sid, data):
+    # Rate limiting: 20 deck changes per minute
+    if not check_socket_rate_limit(sid, "changeDeck", limit=20, window=60):
+        return
+
     if not isinstance(data, dict):
         return
 
