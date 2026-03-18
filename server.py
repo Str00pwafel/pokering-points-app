@@ -16,7 +16,7 @@ from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from version import __version__
+from version import __version__, __changelog__
 
 # Configure logging with file rotation
 LOG_DIR = os.getenv("LOG_DIR", "logs")
@@ -336,7 +336,10 @@ def load_theme_config():
 
 @app.get("/version")
 async def get_version():
-    return {"version": __version__}
+    return {
+        "version": __version__,
+        "changes": __changelog__.get(__version__, []),
+    }
 
 @app.get("/theme")
 async def get_theme():
