@@ -15,7 +15,7 @@ if (!sessionId || sessionId === 'session' || sessionId === 'undefined') {
   window.location.href = '/create';
 }
 
-let username = sessionStorage.getItem("jiraPokerUsername") || "";
+let username = sessionStorage.getItem("jiraPokerUsername") || localStorage.getItem("jiraPokerUsername") || "";
 let clientId = sessionStorage.getItem('jiraPokerClientId');
 if (!clientId) {
   clientId = 'client-' + Math.random().toString(36).slice(2, 9);
@@ -49,6 +49,7 @@ function promptUsername() {
     errorEl.textContent = "";
     username = name.slice(0, 20);
     sessionStorage.setItem("jiraPokerUsername", username);
+    localStorage.setItem("jiraPokerUsername", username);
     document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
     document.getElementById('mainContent').classList.remove('hidden');
     socket.emit('join', { sessionId, username, clientId, deck: cardValues.filter(v => typeof v === 'number') });
@@ -134,6 +135,7 @@ socket.on('redirectToNewSession', ({ url, usernames, wantsToVote }) => {
 
   if (myName) {
     sessionStorage.setItem("jiraPokerUsername", myName);
+    localStorage.setItem("jiraPokerUsername", myName);
   }
   if (myWantsToVote !== undefined) {
     sessionStorage.setItem("jiraPokerHostVoteDecision", myWantsToVote);
