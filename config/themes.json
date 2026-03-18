@@ -46,6 +46,36 @@
           "count": 8
         }
       }
+    },
+    "koningsdag": {
+      "name": "Koningsdag",
+      "colors": {
+        "primary-bg": "#FF6600",
+        "primary-action": "#377AA5",
+        "primary-hover": "#2A5F85",
+        "success": "#36454F",
+        "card-bg": "#FF8833",
+        "modal-bg": "#FF8833",
+        "error": "#DC143C",
+        "secondary-action": "#36454F",
+        "secondary-hover": "#2C3E50",
+        "text-primary": "#FFFFFF",
+        "text-secondary": "#FFF5E6"
+      },
+      "logo": "beardcraft.png",
+      "decorations": {
+        "crown": {
+          "enabled": true,
+          "size": 100,
+          "top": -20,
+          "marginLeft": -75,
+          "rotation": -15
+        },
+        "dutchFlags": {
+          "enabled": true,
+          "count": 6
+        }
+      }
     }
   },
   "schedule": [
@@ -53,6 +83,11 @@
       "theme": "christmas",
       "start": "12-01",
       "end": "12-31"
+    },
+    {
+      "theme": "koningsdag",
+      "start": "04-23",
+      "end": "04-30"
     }
   ]
 }

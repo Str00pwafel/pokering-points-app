@@ -78,6 +78,51 @@ img.logo {
 	}
 }
 
+/* Koningsdag theme decorations */
+.crown-overlay {
+	position: absolute;
+	left: 50%;
+	pointer-events: none;
+	z-index: 10;
+	--crown-rotation: 0deg;
+	animation: crownBounce 2s ease-in-out infinite;
+	/* Size, position, and rotation set via JavaScript from theme config */
+}
+
+@keyframes crownBounce {
+	0%, 100% { transform: rotate(var(--crown-rotation)); }
+	50% { transform: rotate(var(--crown-rotation)) translateY(-5px); }
+}
+
+.dutch-flags {
+	position: absolute;
+	top: 0;
+	left: 50%;
+	transform: translateX(calc(-50% - 5px));
+	width: 120%;
+	height: 150%;
+	pointer-events: none;
+	overflow: visible;
+}
+
+.dutch-flag {
+	position: absolute;
+	top: -10px;
+	opacity: 0.8;
+	animation: flagfall 5s linear infinite;
+}
+
+@keyframes flagfall {
+	0% {
+		transform: translateY(0) rotate(0deg);
+		opacity: 0.8;
+	}
+	100% {
+		transform: translateY(400px) rotate(360deg);
+		opacity: 0;
+	}
+}
+
 /* Accessibility: Respect user's motion preferences */
 @media (prefers-reduced-motion: reduce) {
 	.santa-hat-overlay {
@@ -86,6 +131,16 @@ img.logo {
 	}
 
 	.snowflake {
+		animation: none;
+		opacity: 0.3;
+	}
+
+	.crown-overlay {
+		animation: none;
+		transform: rotate(var(--crown-rotation));
+	}
+
+	.dutch-flag {
 		animation: none;
 		opacity: 0.3;
 	}

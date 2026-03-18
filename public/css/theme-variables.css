@@ -30,7 +30,7 @@
 
 /* Prevent transitions on animations to avoid conflicts */
 @media (prefers-reduced-motion: no-preference) {
-    .snowflake, .santa-hat-overlay {
+    .snowflake, .santa-hat-overlay, .dutch-flag, .crown-overlay {
         transition: none;
     }
 }
