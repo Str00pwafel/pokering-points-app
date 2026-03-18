@@ -51,6 +51,7 @@ SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+TRUST_PROXY = os.getenv("TRUST_PROXY", "false").lower() in ("true", "1", "yes")
 
 # Session storage and limits
 sessions = {}
@@ -83,8 +84,8 @@ DECK_PRESETS = {
 }
 DEFAULT_DECK_TYPE = "fibonacci"
 
-last_join_time = defaultdict(lambda: datetime.min)
-last_create_time = defaultdict(lambda: datetime.min)
+last_join_time = defaultdict(lambda: datetime.min.replace(tzinfo=timezone.utc))
+last_create_time = defaultdict(lambda: datetime.min.replace(tzinfo=timezone.utc))
 
 # Socket.IO rate limiting per socket
 socket_rate_limits = defaultdict(lambda: defaultdict(list))
@@ -124,10 +125,19 @@ async def session_cleanup():
         if to_remove:
             logger.warning(f"Cleaned up {len(to_remove)} expired sessions")
 
+# IP detection helper (proxy-aware)
+def get_client_ip(request):
+    """Get client IP, checking X-Forwarded-For when behind a trusted proxy."""
+    if TRUST_PROXY:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else None
+
 # Socket.IO rate limiting helper
 def check_socket_rate_limit(sid, action, limit=30, window=60):
     """Check if socket action is rate limited"""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     # Clean old entries for this socket/action
     socket_rate_limits[sid][action] = [
@@ -147,7 +157,7 @@ def check_socket_rate_limit(sid, action, limit=30, window=60):
 async def rate_limit_cleanup():
     while True:
         await asyncio.sleep(RATE_LIMIT_CLEANUP_INTERVAL.total_seconds())
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         cutoff = now - timedelta(minutes=30)
 
         # Clean up old IP-based rate limit entries
@@ -220,8 +230,8 @@ async def create_session(request: Request):
         )
 
     # Rate limiting based on IP
-    client_ip = request.client.host if request.client else None
-    now = datetime.now()
+    client_ip = get_client_ip(request)
+    now = datetime.now(timezone.utc)
 
     if client_ip and now - last_create_time[client_ip] < CREATE_RATE_LIMIT:
         logger.warning(f"Rate limit exceeded for session creation: {client_ip}")
@@ -241,7 +251,7 @@ async def create_session(request: Request):
         "hostClientId": None,
         "createdAt": datetime.now(timezone.utc),
         "lastActivity": datetime.now(timezone.utc),
-        "deck": [1, 2, 3, 5, 8, 13, 21],
+        "deck": list(DECK_PRESETS[DEFAULT_DECK_TYPE]),
     }
     logger.info(f"Session created: {session_id} by {client_ip}")
     return RedirectResponse(f"/session/{session_id}")
@@ -268,10 +278,9 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
     # Content Security Policy
-    # Note: 'unsafe-inline' is needed for existing inline scripts and event handlers
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "script-src 'self' https://cdn.jsdelivr.net",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",
         "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*",
@@ -464,9 +473,13 @@ async def connect(sid, environ):
 async def disconnect(sid):
     for session_id in sessions:
         if sid in sessions[session_id]["users"]:
-            username = sessions[session_id]["users"][sid].get("username", "unknown")
+            user = sessions[session_id]["users"][sid]
+            username = user.get("username", "unknown")
+            was_host = user.get("isHost", False)
             del sessions[session_id]["users"][sid]
             logger.info(f"User disconnected: {username} from session {session_id}")
+            if was_host:
+                await sio.emit('hostLeft', room=session_id)
             await sio.emit('usersUpdate', sessions[session_id]["users"], room=session_id)
             break
 
@@ -499,10 +512,17 @@ async def join(sid, data):
         await sio.emit("joinFailed", {"reason": "Invalid client ID"}, room=sid)
         return
 
-    if "asgi.scope" in data and data["asgi.scope"].get("client"):
-        ip_addr, _ = data["asgi.scope"]["client"]
+    if "asgi.scope" in data:
+        scope = data["asgi.scope"]
+        if TRUST_PROXY:
+            headers = dict(scope.get("headers", []))
+            forwarded = headers.get(b"x-forwarded-for", b"").decode()
+            if forwarded:
+                ip_addr = forwarded.split(",")[0].strip()
+        if not ip_addr and scope.get("client"):
+            ip_addr, _ = scope["client"]
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     if ip_addr and now - last_join_time[ip_addr] < JOIN_RATE_LIMIT:
         await sio.emit("joinFailed", {"reason": "Too many join attempts. Please wait."}, room=sid)

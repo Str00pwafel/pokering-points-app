@@ -7,7 +7,7 @@
    <link rel="stylesheet" href="/css/theme-variables.css" />
    <link rel="stylesheet" href="/css/welcome.css" />
    <script src="/javascript/theme-loader.js"></script>
-   <script src="/javascript/welcome.js" defer></script>
+   <script src="/javascript/welcome.js"></script>
    <style>
       .version-badge {
          position: fixed;
@@ -28,7 +28,7 @@
    <div id="versionBadge" class="version-badge" aria-label="App version"></div>
    <img src="images/beardcraft.png" alt="Beardcraft Logo" class="logo" />
    <h1>Welcome to Pokering Points</h1>
-   <button onclick="startSession()">Start a Poker Session</button>
+   <button id="startSessionBtn">Start a Poker Session</button>
    <div class="footer">
       JavaScript must be enabled to use this application.
    </div>
@@ -36,16 +36,5 @@
       <style>body { display: none; }</style>
       <div>Please enable JavaScript to use Pokering Points.</div>
    </noscript>
-   <script>
-      (async () => {
-         try {
-            const res = await fetch('/version', { cache: 'no-store' });
-            if (!res.ok) return;
-            const { version } = await res.json();
-            const el = document.getElementById('versionBadge');
-            if (el) el.textContent = `v${version}`;
-         } catch {}
-      })();
-   </script>
 </body>
 </html>

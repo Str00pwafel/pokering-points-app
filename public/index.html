@@ -37,8 +37,8 @@
       <div id="pokerScreen" class="container">
          <h1 id="welcomeUser"></h1>
          <div style="margin-top: 10px;">
-            <button id="newRoundBtn" onclick="startNewRound()" style="display:none;">➡️ Start New Round</button>
-            <button id="copyLinkBtn" onclick="copyLink()">🔗 Copy Session Link</button>
+            <button id="newRoundBtn" style="display:none;">➡️ Start New Round</button>
+            <button id="copyLinkBtn">🔗 Copy Session Link</button>
             <p id="copiedMsg" style="display:none; font-size: 14px; color: lightgreen;">Copied to clipboard!</p>
          </div>
          <h2>Pick your estimate</h2>
@@ -59,6 +59,13 @@
          <div id="modalError" class="error-message"></div>
          <button id="modalConfirm">OK</button>
          <button id="modalCancel">Cancel</button>
+      </div>
+   </div>
+   <div id="hostLeftOverlay" class="host-left-overlay hidden">
+      <div class="host-left-message">
+         <h2>The host has left the session</h2>
+         <p>This session is no longer active.</p>
+         <button id="hostLeftNewSession">Start a New Session</button>
       </div>
    </div>
    <noscript>

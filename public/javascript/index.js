@@ -18,7 +18,9 @@ if (!sessionId || sessionId === 'session' || sessionId === 'undefined') {
 let username = sessionStorage.getItem("jiraPokerUsername") || localStorage.getItem("jiraPokerUsername") || "";
 let clientId = sessionStorage.getItem('jiraPokerClientId');
 if (!clientId) {
-  clientId = 'client-' + Math.random().toString(36).slice(2, 9);
+  const bytes = new Uint8Array(7);
+  crypto.getRandomValues(bytes);
+  clientId = 'client-' + Array.from(bytes, b => b.toString(36).padStart(2, '0')).join('').slice(0, 7);
   sessionStorage.setItem('jiraPokerClientId', clientId);
 }
 
@@ -84,6 +86,12 @@ window.addEventListener('load', () => {
     promptUsername();
   }
   updateVersionBadge();
+
+  document.getElementById('newRoundBtn').addEventListener('click', startNewRound);
+  document.getElementById('copyLinkBtn').addEventListener('click', copyLink);
+  document.getElementById('hostLeftNewSession').addEventListener('click', () => {
+    window.location.href = '/create';
+  });
 });
 
 const DECK_PRESETS = {
@@ -165,7 +173,7 @@ function copyLink() {
     setTimeout(() => msg.style.display = 'none', 2000);
   }).catch(err => {
     console.error('Failed to copy:', err);
-    alert('Failed to copy session link to clipboard.');
+    showModal('Failed to copy session link to clipboard.', null, false, false, true);
   });
 }
 
@@ -294,6 +302,11 @@ socket.on('revealVotes', ({ users, stats }) => {
 
   document.getElementById('votesDisplay').innerHTML = results;
   document.getElementById('voteSummary').innerHTML = summary;
+});
+
+socket.on('hostLeft', () => {
+  const overlay = document.getElementById('hostLeftOverlay');
+  if (overlay) overlay.classList.remove('hidden');
 });
 
 socket.on('joinFailed', ({ reason }) => {
