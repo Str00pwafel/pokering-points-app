@@ -336,9 +336,11 @@ def load_theme_config():
 
 @app.get("/version")
 async def get_version():
+    versions = list(__changelog__.keys())[:2]
+    changelog = {v: __changelog__[v] for v in versions}
     return {
         "version": __version__,
-        "changes": __changelog__.get(__version__, []),
+        "changelog": changelog,
     }
 
 @app.get("/theme")

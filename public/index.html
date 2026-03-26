@@ -38,8 +38,8 @@
          max-width: 340px;
          line-height: 1.5;
       }
-      .version-badge:hover + .version-tooltip,
-      .version-tooltip:hover {
+      .version-badge:hover + .version-tooltip:not(:empty),
+      .version-tooltip:not(:empty):hover {
          display: block;
       }
       .version-tooltip h4 {

@@ -1,6 +1,10 @@
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 __changelog__ = {
+    "1.3.1": [
+        "Version tooltip now shows last 2 versions' changelogs",
+        "Fixed changelog not appearing on game page",
+    ],
     "1.3.0": [
         "Koningsdag theme: crown decoration, falling Dutch flags, orange color scheme",
         "Audit logging with file rotation (5MB, 3 backups)",
