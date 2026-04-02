@@ -3,7 +3,7 @@
 A simple planning poker app built with **FastAPI** and **Socket.IO**.
 
 ## Requirements
-- Python **3.10+** (3.11 recommended)
+- Python **3.10+** (3.13 recommended)
 - pip
 
 ## Setup

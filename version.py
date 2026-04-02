@@ -1,6 +1,11 @@
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 __changelog__ = {
+    "1.3.2": [
+        "Fix rate limiting: reduce create session cooldown from 10s to 3s",
+        "Fix rate limiting: increase new round limit from 3/hour to 30/hour",
+        "Dependencies: update all packages to latest, remove unused shortuuid",
+    ],
     "1.3.1": [
         "Version tooltip now shows last 2 versions' changelogs",
         "Fixed changelog not appearing on game page",

@@ -63,7 +63,7 @@ IDLE_TIMEOUT = timedelta(hours=2)
 JOIN_RATE_LIMIT = timedelta(seconds=5)
 SESSION_CLEANUP_INTERVAL = timedelta(minutes=5)  # More frequent cleanup
 RATE_LIMIT_CLEANUP_INTERVAL = timedelta(minutes=10)
-CREATE_RATE_LIMIT = timedelta(seconds=10)
+CREATE_RATE_LIMIT = timedelta(seconds=3)
 
 # Input validation patterns
 USERNAME_RE = re.compile(r"^[A-Za-z]{1,20}$")
@@ -686,7 +686,7 @@ async def vote(sid, data):
 @sio.event
 async def requestNewRound(sid, data):
     # Rate limiting: 3 new rounds per hour
-    if not check_socket_rate_limit(sid, "requestNewRound", limit=3, window=3600):
+    if not check_socket_rate_limit(sid, "requestNewRound", limit=30, window=3600):
         logger.warning(f"New round rate limit exceeded for socket {sid}")
         await sio.emit("joinFailed", {"reason": "Too many new round requests"}, room=sid)
         return
