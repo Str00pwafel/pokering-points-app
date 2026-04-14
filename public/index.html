@@ -69,11 +69,13 @@
          <h1 id="welcomeUser"></h1>
          <div style="margin-top: 10px;">
             <button id="newRoundBtn" style="display:none;">➡️ Start New Round</button>
+            <button id="toggleVotingBtn" style="display:none;">🔒 Unlock Voting</button>
             <button id="copyLinkBtn">🔗 Copy Session Link</button>
             <p id="copiedMsg" style="display:none; font-size: 14px; color: lightgreen;">Copied to clipboard!</p>
          </div>
          <h2>Pick your estimate</h2>
          <div id="status"></div>
+         <div id="votingLockedIndicator" class="voting-locked-indicator hidden" aria-live="polite">🔒</div>
          <div class="card-options" id="cardOptions"></div>
          <div id="countdown"></div>
          <div id="votesDisplay"></div>
@@ -90,6 +92,27 @@
          <div id="modalError" class="error-message"></div>
          <button id="modalConfirm">OK</button>
          <button id="modalCancel">Cancel</button>
+      </div>
+   </div>
+   <div id="hostSettingsBackdrop" class="host-settings-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="hostSettingsTitle">
+      <div id="hostSettingsContent" class="host-settings-content">
+         <h3 id="hostSettingsTitle">Session Settings</h3>
+         <p class="host-settings-subtitle">You are the host. Configure before joining.</p>
+         <div class="toggle-row">
+            <span>Join voting</span>
+            <label class="toggle-switch">
+               <input type="checkbox" id="toggleJoinVoting" checked>
+               <span class="toggle-slider"></span>
+            </label>
+         </div>
+         <div class="toggle-row">
+            <span>Enable voting from start</span>
+            <label class="toggle-switch">
+               <input type="checkbox" id="toggleVotingEnabled" checked>
+               <span class="toggle-slider"></span>
+            </label>
+         </div>
+         <button id="hostSettingsConfirm">Join Session</button>
       </div>
    </div>
    <div id="hostLeftOverlay" class="host-left-overlay hidden">

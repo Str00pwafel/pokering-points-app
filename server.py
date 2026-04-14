@@ -252,6 +252,7 @@ async def create_session(request: Request):
         "createdAt": datetime.now(timezone.utc),
         "lastActivity": datetime.now(timezone.utc),
         "deck": list(DECK_PRESETS[DEFAULT_DECK_TYPE]),
+        "votingEnabled": True,
     }
     logger.info(f"Session created: {session_id} by {client_ip}")
     return RedirectResponse(f"/session/{session_id}")
@@ -587,9 +588,7 @@ async def join(sid, data):
     await sio.emit("deckChanged", {"deckType": session_deck_type}, room=sid)
 
     await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
-
-    if is_host and "wantsToVote" not in data:
-        await sio.emit('askHostToJoinVoting', room=sid)
+    await sio.emit("sessionState", {"votingEnabled": sessions[session_id].get("votingEnabled", True)}, room=session_id)
 
 @sio.event
 async def vote(sid, data):
@@ -609,6 +608,9 @@ async def vote(sid, data):
         return
 
     if session_id not in sessions:
+        return
+
+    if not sessions[session_id].get("votingEnabled", True):
         return
 
     # Validate vote is a value in the session's deck
@@ -717,6 +719,13 @@ async def requestNewRound(sid, data):
         deck_type = DEFAULT_DECK_TYPE
     new_deck = DECK_PRESETS[deck_type]
 
+    # Host may override votingEnabled for the new round
+    voting_enabled_override = data.get("votingEnabled")
+    if isinstance(voting_enabled_override, bool):
+        new_voting_enabled = voting_enabled_override
+    else:
+        new_voting_enabled = old_session.get("votingEnabled", True)
+
     new_id = secrets.token_urlsafe(12)[:16]  # 16 URL-safe characters
     sessions[new_id] = {
         "users": {},
@@ -726,6 +735,7 @@ async def requestNewRound(sid, data):
         "lastActivity": datetime.now(timezone.utc),
         "deck": new_deck,
         "deckType": deck_type,
+        "votingEnabled": new_voting_enabled,
     }
 
     username_map = {sockid: u["username"] for sockid, u in old_session.get("users", {}).items()}
@@ -809,6 +819,44 @@ async def hostVotingDecision(sid, data):
     if user and user.get("isHost"):
         user["wantsToVote"] = wants_to_vote
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
+
+@sio.event
+async def setVotingEnabled(sid, data):
+    if not check_socket_rate_limit(sid, "setVotingEnabled", limit=20, window=60):
+        return
+
+    if not isinstance(data, dict):
+        return
+
+    session_id = data.get("sessionId")
+    voting_enabled = data.get("votingEnabled")
+
+    if not isinstance(session_id, str) or not SESSION_ID_RE.fullmatch(session_id):
+        return
+
+    if not isinstance(voting_enabled, bool):
+        return
+
+    session = sessions.get(session_id)
+    if session is None:
+        logger.warning(f"setVotingEnabled rejected: session not found ({session_id}) sid={sid}")
+        return
+
+    user = session["users"].get(sid)
+    if not user or not user.get("isHost"):
+        logger.warning(f"setVotingEnabled rejected: non-host attempt in session {session_id} sid={sid}")
+        return
+
+    # Only allow when no votes cast
+    has_votes = any(u["vote"] is not None for u in session["users"].values())
+    if has_votes:
+        logger.warning(f"setVotingEnabled rejected: votes already cast in session {session_id} by host {user.get('username', 'unknown')}")
+        return
+
+    session["votingEnabled"] = voting_enabled
+    logger.info(f"Voting {'enabled' if voting_enabled else 'disabled'} in session {session_id}")
+
+    await sio.emit("sessionState", {"votingEnabled": voting_enabled}, room=session_id)
 
 # Start server
 if __name__ == "__main__":

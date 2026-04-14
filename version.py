@@ -1,6 +1,14 @@
-__version__ = "1.3.2"
+__version__ = "1.4.0"
 
 __changelog__ = {
+    "1.4.0": [
+        "Host session settings modal: sliders for join voting and start voting enabled",
+        "Host can lock/unlock voting from the game UI (only when no votes cast)",
+        "Locked voting: cards disabled with lock indicator for all users",
+        "Post-reveal lock scheduling: host can schedule lock change for next round",
+        "Toggle button disabled during countdown and while votes are being cast",
+        "Host vote decision now scoped per-session to prevent modal skip across sessions",
+    ],
     "1.3.2": [
         "Fix rate limiting: reduce create session cooldown from 10s to 3s",
         "Fix rate limiting: increase new round limit from 3/hour to 30/hour",
