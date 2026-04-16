@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import json
 import logging
 import logging.handlers
@@ -52,6 +53,28 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 TRUST_PROXY = os.getenv("TRUST_PROXY", "false").lower() in ("true", "1", "yes")
+
+# Rate limit whitelist — comma-separated IPs or CIDR ranges (e.g., "192.168.1.0/24,10.0.0.1")
+_raw_whitelist = os.getenv("RATE_LIMIT_WHITELIST", "").strip()
+RATE_LIMIT_WHITELIST = []
+if _raw_whitelist:
+    for entry in _raw_whitelist.split(","):
+        entry = entry.strip()
+        if entry:
+            try:
+                RATE_LIMIT_WHITELIST.append(ipaddress.ip_network(entry, strict=False))
+            except ValueError:
+                logging.warning(f"Invalid RATE_LIMIT_WHITELIST entry ignored: {entry}")
+
+def is_ip_whitelisted(ip_str):
+    """Check if IP matches any whitelisted network/address."""
+    if not ip_str or not RATE_LIMIT_WHITELIST:
+        return False
+    try:
+        addr = ipaddress.ip_address(ip_str)
+        return any(addr in net for net in RATE_LIMIT_WHITELIST)
+    except ValueError:
+        return False
 
 # Session storage and limits
 sessions = {}
@@ -136,7 +159,10 @@ def get_client_ip(request):
 
 # Socket.IO rate limiting helper
 def check_socket_rate_limit(sid, action, limit=30, window=60):
-    """Check if socket action is rate limited"""
+    """Check if socket action is rate limited. Whitelisted IPs skip limits."""
+    if is_ip_whitelisted(socket_ip_map.get(sid)):
+        return True
+
     now = datetime.now(timezone.utc)
 
     # Clean old entries for this socket/action
@@ -233,7 +259,7 @@ async def create_session(request: Request):
     client_ip = get_client_ip(request)
     now = datetime.now(timezone.utc)
 
-    if client_ip and now - last_create_time[client_ip] < CREATE_RATE_LIMIT:
+    if client_ip and not is_ip_whitelisted(client_ip) and now - last_create_time[client_ip] < CREATE_RATE_LIMIT:
         logger.warning(f"Rate limit exceeded for session creation: {client_ip}")
         return HTMLResponse(
             content="<html><body><h1>Too Many Requests</h1><p>Please wait before creating another session.</p></body></html>",
@@ -470,13 +496,29 @@ app.mount("/", StaticFiles(directory="public"), name="static")
 # Combine FastAPI and Socket.IO
 asgi_app = socketio.ASGIApp(sio, app)
 
+# Track socket-to-IP mapping for whitelist lookups
+socket_ip_map = {}
+
 # Socket.IO handlers
 @sio.event
 async def connect(sid, environ):
-    pass  # Connection established
+    # Store client IP for rate limit whitelist checks
+    ip_addr = None
+    if TRUST_PROXY:
+        headers = dict(environ.get("asgi.scope", {}).get("headers", []))
+        forwarded = headers.get(b"x-forwarded-for", b"").decode()
+        if forwarded:
+            ip_addr = forwarded.split(",")[0].strip()
+    if not ip_addr:
+        scope = environ.get("asgi.scope", {})
+        if scope.get("client"):
+            ip_addr = scope["client"][0]
+    if ip_addr:
+        socket_ip_map[sid] = ip_addr
 
 @sio.event
 async def disconnect(sid):
+    socket_ip_map.pop(sid, None)
     for session_id in sessions:
         if sid in sessions[session_id]["users"]:
             user = sessions[session_id]["users"][sid]
@@ -530,7 +572,7 @@ async def join(sid, data):
 
     now = datetime.now(timezone.utc)
 
-    if ip_addr and now - last_join_time[ip_addr] < JOIN_RATE_LIMIT:
+    if ip_addr and not is_ip_whitelisted(ip_addr) and now - last_join_time[ip_addr] < JOIN_RATE_LIMIT:
         await sio.emit("joinFailed", {"reason": "Too many join attempts. Please wait."}, room=sid)
         return
 
