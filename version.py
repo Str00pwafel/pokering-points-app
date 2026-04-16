@@ -10,6 +10,9 @@ __changelog__ = {
         "New Session button redesigned from link to button with disabled state",
         "In-place re-vote: Start New Round resets votes without redirect or new session",
         "Host vote decision now scoped per-session to prevent modal skip across sessions",
+        "Clickable version badge opens full changelog page in new tab",
+        "Full version history: changelogs for all versions from 1.0.0 to current",
+        "Rate limit IP whitelist via RATE_LIMIT_WHITELIST environment variable",
     ],
     "1.3.2": [
         "Fix rate limiting: reduce create session cooldown from 10s to 3s",
@@ -37,7 +40,21 @@ __changelog__ = {
         "Performance and accessibility improvements",
     ],
     "1.1.0": [
-        "16-character session IDs with rate limiting",
-        "Input validation and resource limits",
+        "Fibonacci sequence as default voting deck",
+        "Outlier detection: flag votes by Fibonacci step-distance from median",
+        "Reuse client deck selection across rounds",
+        "16-character cryptographically secure session IDs",
+        "Per-IP rate limiting and input validation",
+        "Resource limits: max sessions, users per session, username length",
+    ],
+    "1.0.0": [
+        "Initial release: real-time planning poker with FastAPI + Socket.IO",
+        "Host controls: exclude self from voting, request new round",
+        "Question mark vote option for abstaining",
+        "Vote average and outlier highlighting after reveal",
+        "User list with live presence tracking",
+        "Session timeouts with automatic cleanup",
+        "Basic per-IP rate limiting for session creation",
+        "Username limited to 20 characters",
     ],
 }

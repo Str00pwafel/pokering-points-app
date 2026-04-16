@@ -21,7 +21,8 @@
          color: #fff;
          z-index: 9999;
          user-select: none;
-         cursor: default;
+         cursor: pointer;
+         text-decoration: none;
       }
       .version-tooltip {
          display: none;
@@ -34,7 +35,7 @@
          border-radius: 8px;
          font-size: 12px;
          z-index: 9999;
-         max-width: 340px;
+         max-width: 680px;
          line-height: 1.5;
       }
       .version-badge:hover + .version-tooltip:not(:empty),
@@ -47,15 +48,22 @@
       }
       .version-tooltip ul {
          margin: 0;
-         padding-left: 16px;
+         padding-left: 0;
+         list-style: none;
       }
       .version-tooltip li {
          margin-bottom: 2px;
+         padding-left: 12px;
+         text-indent: -8px;
+      }
+      .version-tooltip li::before {
+         content: "•";
+         margin-right: 4px;
       }
    </style>
 </head>
 <body>
-   <div id="versionBadge" class="version-badge" aria-label="App version"></div>
+   <a id="versionBadge" class="version-badge" href="/changelog.html" target="_blank" aria-label="App version"></a>
    <div id="versionTooltip" class="version-tooltip"></div>
    <img src="images/beardcraft.png" alt="Beardcraft Logo" class="logo" />
    <h1>Welcome to Pokering Points</h1>

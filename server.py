@@ -370,6 +370,13 @@ async def get_version():
         "changelog": changelog,
     }
 
+@app.get("/version/full")
+async def get_version_full():
+    return {
+        "version": __version__,
+        "changelog": __changelog__,
+    }
+
 @app.get("/theme")
 async def get_theme():
     """Get active theme based on current date"""
