@@ -175,18 +175,11 @@ function selectCard(element, value) {
 }
 
 function startNewRound() {
-  showModal(
-    "Are you sure you want to start a new round?<br>" +
-    "<span style='color:green;font-weight:bold;'>Everyone will be redirected.</span>",
-    () => {
-      sessionStorage.setItem("jiraPokerUsername", username);
-      const payload = { sessionId, deckType: currentDeckType };
-      if (pendingVotingEnabled !== null) {
-        payload.votingEnabled = pendingVotingEnabled;
-      }
-      socket.emit('requestNewRound', payload);
-    }
-  );
+  const payload = { sessionId, deckType: currentDeckType };
+  if (pendingVotingEnabled !== null) {
+    payload.votingEnabled = pendingVotingEnabled;
+  }
+  socket.emit('requestNewRound', payload);
 }
 
 function copyLink() {
@@ -201,33 +194,25 @@ function copyLink() {
   });
 }
 
-const SESSION_URL_RE = /^\/session\/([A-Za-z0-9_-]{16})$/;
+socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
+  selectedCard = null;
+  votesRevealed = false;
+  pendingVotingEnabled = null;
+  votingEnabled = enabled;
 
-socket.on('redirectToNewSession', ({ url, usernames, wantsToVote, deckType }) => {
-  if (typeof url !== 'string') return;
-  const match = SESSION_URL_RE.exec(url);
-  if (!match) {
-    console.warn('Rejected redirectToNewSession: invalid url format');
-    return;
-  }
-  const newSessionId = match[1];
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('countdown').innerText = '';
+  document.getElementById('votesDisplay').innerHTML = '';
+  document.getElementById('voteSummary').innerHTML = '';
 
   if (deckType && DECK_PRESETS[deckType]) {
-    sessionStorage.setItem("jiraPokerDeckType", deckType);
-  }
-  const mySocketId = socket.id;
-  const myName = usernames?.[mySocketId];
-  const myWantsToVote = wantsToVote?.[mySocketId];
-
-  if (myName) {
-    sessionStorage.setItem("jiraPokerUsername", myName);
-    localStorage.setItem("jiraPokerUsername", myName);
-  }
-  if (myWantsToVote !== undefined) {
-    sessionStorage.setItem(`jiraPokerHostVoteDecision_${newSessionId}`, myWantsToVote);
+    currentDeckType = deckType;
+    document.getElementById('deckSelector').value = deckType;
+    renderCards();
   }
 
-  window.location.href = url;
+  updateVotingLockState();
+  updateToggleBtnLabel();
 });
 
 socket.on('usersUpdate', users => {
@@ -243,7 +228,7 @@ socket.on('usersUpdate', users => {
   // Grey out deck selector if votes have been cast
   if (isHost) {
     const hasVotes = Object.values(users).some(u => u.vote !== null);
-    document.getElementById('deckSelector').disabled = hasVotes;
+    document.getElementById('deckSelector').disabled = hasVotes || votesRevealed;
     toggleBtn.disabled = hasVotes && !votesRevealed;
     updateToggleBtnLabel();
   }
@@ -306,6 +291,9 @@ socket.on('usersUpdate', users => {
 socket.on('countdown', seconds => {
   document.getElementById('countdown').innerText = `Revealing in: ${seconds}`;
   document.getElementById('toggleVotingBtn').disabled = true;
+  document.getElementById('newRoundBtn').disabled = true;
+  document.getElementById('newSessionBtn').disabled = true;
+  document.getElementById('deckSelector').disabled = true;
 });
 
 socket.on('revealVotes', ({ users, stats }) => {
@@ -313,6 +301,8 @@ socket.on('revealVotes', ({ users, stats }) => {
   updateToggleBtnLabel();
   const toggleBtn = document.getElementById('toggleVotingBtn');
   toggleBtn.disabled = false;
+  document.getElementById('newRoundBtn').disabled = false;
+  document.getElementById('newSessionBtn').disabled = false;
   document.getElementById('countdown').innerText = "";
   const votingUsers = Object.values(users).filter(u => !(u.isHost && u.wantsToVote === false));
 
@@ -464,7 +454,7 @@ function confirmHostSettings() {
   sessionStorage.setItem(`jiraPokerHostVoteDecision_${sessionId}`, String(wantsToVote));
 }
 
-document.getElementById('newSessionLink').addEventListener('click', (e) => {
+document.getElementById('newSessionBtn').addEventListener('click', (e) => {
   e.preventDefault();
   showModal(
     "Start a new session?<br><br>" +

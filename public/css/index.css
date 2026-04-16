@@ -146,24 +146,25 @@ button:disabled {
 	text-overflow: ellipsis;
 }
 
-#newSessionLink,
+#newSessionBtn,
 #deckSelector {
 	position: absolute;
 	left: 20px;
 	color: var(--text-primary);
-	text-decoration: none;
 	background: var(--primary-action);
 	padding: 6px 12px;
 	border-radius: 5px;
 	font-size: 14px;
 	border: none;
+	margin: 0;
 	cursor: pointer;
 	box-sizing: border-box;
 	width: 180px;
 	text-align: center;
+	font-family: inherit;
 }
 
-#newSessionLink {
+#newSessionBtn {
 	top: 20px;
 }
 
@@ -171,11 +172,12 @@ button:disabled {
 	top: 55px;
 }
 
-#newSessionLink:hover,
+#newSessionBtn:hover:not(:disabled),
 #deckSelector:hover:not(:disabled) {
 	background: var(--primary-hover);
 }
 
+#newSessionBtn:disabled,
 #deckSelector:disabled {
 	opacity: 0.4;
 	cursor: not-allowed;

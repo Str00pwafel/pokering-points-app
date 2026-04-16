@@ -636,21 +636,27 @@ async def vote(sid, data):
         if all_voted and not sessions[session_id]["revealed"]:
             sessions[session_id]["revealed"] = True
 
+            sessions[session_id]["countdownActive"] = True
             count = 3
             async def countdown():
                 nonlocal count
                 while count >= 0:
+                    if session_id not in sessions:
+                        return
                     await sio.emit("countdown", count, room=session_id)
                     await asyncio.sleep(1)
                     count -= 1
 
-                deck = sessions[session_id].get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE])
+                session = sessions.get(session_id)
+                if session is None:
+                    return
+                deck = session.get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE])
                 # Build index lookup, excluding "?" from stats
                 index_of = {v: i for i, v in enumerate(deck) if v != "?"}
 
                 # Collect votes that are in the deck (excluding "?")
                 voted = []
-                for u in sessions[session_id]["users"].values():
+                for u in session["users"].values():
                     v = u["vote"]
                     if v == "?" or v is None:
                         continue
@@ -678,8 +684,11 @@ async def vote(sid, data):
                         if abs(index_of[v] - median_idx) >= STEP_THRESHOLD
                     ]
 
+                if session_id not in sessions:
+                    return
+                session["countdownActive"] = False
                 await sio.emit("revealVotes", {
-                    "users": sessions[session_id]["users"],
+                    "users": session["users"],
                     "stats": vote_stats
                 }, room=session_id)
 
@@ -713,11 +722,14 @@ async def requestNewRound(sid, data):
         await sio.emit("joinFailed", {"reason": "Only host can request new round"}, room=sid)
         return
 
+    # Block during countdown (revealed still False but countdown task running)
+    if old_session.get("countdownActive"):
+        return
+
     # Determine deck for new round
     deck_type = data.get("deckType", DEFAULT_DECK_TYPE)
     if deck_type not in DECK_PRESETS:
         deck_type = DEFAULT_DECK_TYPE
-    new_deck = DECK_PRESETS[deck_type]
 
     # Host may override votingEnabled for the new round
     voting_enabled_override = data.get("votingEnabled")
@@ -726,31 +738,20 @@ async def requestNewRound(sid, data):
     else:
         new_voting_enabled = old_session.get("votingEnabled", True)
 
-    new_id = secrets.token_urlsafe(12)[:16]  # 16 URL-safe characters
-    sessions[new_id] = {
-        "users": {},
-        "revealed": False,
-        "hostClientId": old_session.get("hostClientId"),
-        "createdAt": datetime.now(timezone.utc),
-        "lastActivity": datetime.now(timezone.utc),
-        "deck": new_deck,
-        "deckType": deck_type,
-        "votingEnabled": new_voting_enabled,
-    }
+    # Clear votes in place — no new session, no redirect
+    votes_cleared = sum(1 for u in old_session["users"].values() if u.get("vote") is not None)
+    for u in old_session["users"].values():
+        u["vote"] = None
+    old_session["revealed"] = False
+    old_session["deck"] = list(DECK_PRESETS[deck_type])
+    old_session["deckType"] = deck_type
+    old_session["votingEnabled"] = new_voting_enabled
+    old_session["lastActivity"] = datetime.now(timezone.utc)
 
-    username_map = {sockid: u["username"] for sockid, u in old_session.get("users", {}).items()}
-    wants_to_vote_map = {sockid: u.get("wantsToVote") for sockid, u in old_session.get("users", {}).items()}
+    logger.info(f"New round in session {session_id} by host {user.get('username', 'unknown')} (deck: {deck_type}, {votes_cleared} votes cleared)")
 
-    logger.info(f"New round: {session_id} -> {new_id} by host {user.get('username', 'unknown')} (deck: {deck_type})")
-
-    await sio.emit("redirectToNewSession", {
-        "url": f"/session/{new_id}",
-        "usernames": username_map,
-        "wantsToVote": wants_to_vote_map,
-        "deckType": deck_type
-    }, room=session_id)
-
-    del sessions[session_id]
+    await sio.emit("roundReset", {"deckType": deck_type, "votingEnabled": new_voting_enabled}, room=session_id)
+    await sio.emit("usersUpdate", old_session["users"], room=session_id)
 
 @sio.event
 async def changeDeck(sid, data):

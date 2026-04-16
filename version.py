@@ -6,7 +6,9 @@ __changelog__ = {
         "Host can lock/unlock voting from the game UI (only when no votes cast)",
         "Locked voting: cards disabled with lock indicator for all users",
         "Post-reveal lock scheduling: host can schedule lock change for next round",
-        "Toggle button disabled during countdown and while votes are being cast",
+        "All host controls disabled during countdown to prevent race conditions",
+        "New Session button redesigned from link to button with disabled state",
+        "In-place re-vote: Start New Round resets votes without redirect or new session",
         "Host vote decision now scoped per-session to prevent modal skip across sessions",
     ],
     "1.3.2": [
