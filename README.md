@@ -50,10 +50,13 @@ All optional. Defaults work out of the box for local development.
 | `ENVIRONMENT` | `development` | Set `production` to disable auto-reload |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins |
 | `TRUST_PROXY` | `false` | Enable `X-Forwarded-For` IP parsing (set `true` behind nginx/Caddy) |
+| `PROXY_DEPTH` | `1` | Number of reverse proxies in front; picks Nth-from-right hop of `X-Forwarded-For`. Only effective when `TRUST_PROXY=true` |
 | `LOG_DIR` | `logs` | Directory for audit log files |
 | `LOG_MAX_BYTES` | `5242880` | Max size per log file (bytes, default 5MB) |
 | `LOG_BACKUP_COUNT` | `3` | Number of rotated log files to keep |
+| `LOG_RETENTION_DAYS` | `30` | Delete rotated log files older than N days. `0` disables |
 | `RATE_LIMIT_WHITELIST` | *(empty)* | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`) |
+| `MAX_RATE_LIMIT_ENTRIES` | `10000` | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded |
 
 No API keys or database credentials needed.
 
@@ -65,8 +68,19 @@ ENVIRONMENT=production TRUST_PROXY=true python3 server.py
 
 When running behind a reverse proxy (nginx, Caddy, Traefik):
 - Set `TRUST_PROXY=true` so rate limiting uses the real client IP
+- Set `PROXY_DEPTH` to the number of proxies between the client and the app (default `1` = single proxy). With two proxies (e.g., CDN → nginx → app), set `PROXY_DEPTH=2`
 - Proxy WebSocket connections to the same port (Socket.IO needs both HTTP and WS)
 - HSTS headers are automatically added when served over HTTPS
+
+### CORS
+
+Production **rejects** `CORS_ORIGINS=*` combined with credentials — set an explicit origin list:
+
+```bash
+CORS_ORIGINS="https://poker.example.com,https://admin.example.com"
+```
+
+In development, `*` is accepted but credentials are auto-disabled (browsers reject the combo).
 
 ## Monitoring
 
@@ -118,9 +132,20 @@ Add custom themes by editing `themes.json` — no code changes needed.
 
 ## Security
 
-- CSP headers (no unsafe-inline for scripts)
-- X-Frame-Options DENY, X-Content-Type-Options nosniff
+- CSP headers, `script-src 'self'` only (no CDN, no `unsafe-inline`). Socket.IO client vendored at `public/javascript/vendor/socket.io.min.js`
+- `connect-src` auto-narrows in production (no `localhost` origins)
+- X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin
 - HSTS when served over HTTPS
-- Crypto-secure session IDs (16-char URL-safe tokens)
-- Input validation via regex on all user inputs
+- Crypto-secure session IDs (16-char URL-safe tokens from `secrets.token_urlsafe`)
+- `/create` requires POST (prevents drive-by prefetch state change)
+- Client IP is server-derived in Socket.IO handlers — never trusted from client payload
+- `X-Forwarded-For` parsing honors `PROXY_DEPTH` (last-hop by default)
+- Input validation via regex on all user inputs; usernames allow unicode letters/digits/spaces with control chars stripped
+- Rate-limit tracking dicts bounded (`MAX_RATE_LIMIT_ENTRIES`) — oldest entries evicted to prevent IPv6 flood growth
 - Rate limiting on all Socket.IO events and HTTP endpoints
+
+### Audit logs & PII
+
+- Logs include IPs (for rate-limit forensics) and user-chosen usernames. No email/tokens logged
+- Rotated files deleted after `LOG_RETENTION_DAYS` (default 30). Adjust for your compliance needs
+- For GDPR/privacy: document retention in your hosting terms; reduce `LOG_RETENTION_DAYS` if required

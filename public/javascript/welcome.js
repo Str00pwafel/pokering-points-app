@@ -1,6 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('startSessionBtn').addEventListener('click', () => {
-    window.location.href = '/create';
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/create';
+    document.body.appendChild(form);
+    form.submit();
   });
 });
 

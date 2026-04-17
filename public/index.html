@@ -5,63 +5,11 @@
    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
    <title>Pokering Points</title>
    <link rel="stylesheet" href="/css/theme-variables.css" />
+   <link rel="stylesheet" href="/css/version-badge.css" />
    <link rel="stylesheet" href="/css/index.css" />
    <script src="/javascript/theme-loader.js"></script>
-   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
+   <script src="/javascript/vendor/socket.io.min.js"></script>
    <script src="/javascript/index.js" defer></script>
-   <style>
-      .version-badge {
-         position: fixed;
-         top: 8px;
-         right: 10px;
-         padding: 2px 8px;
-         border-radius: 10px;
-         font-size: 12px;
-         opacity: 0.8;
-         background: rgba(0,0,0,0.55);
-         color: #fff;
-         z-index: 9999;
-         user-select: none;
-         cursor: pointer;
-         text-decoration: none;
-      }
-      .version-tooltip {
-         display: none;
-         position: fixed;
-         top: 32px;
-         right: 10px;
-         background: rgba(0,0,0,0.85);
-         color: #fff;
-         padding: 10px 14px;
-         border-radius: 8px;
-         font-size: 12px;
-         z-index: 9999;
-         max-width: 680px;
-         line-height: 1.5;
-      }
-      .version-badge:hover + .version-tooltip:not(:empty),
-      .version-tooltip:not(:empty):hover {
-         display: block;
-      }
-      .version-tooltip h4 {
-         margin: 0 0 6px;
-         font-size: 13px;
-      }
-      .version-tooltip ul {
-         margin: 0;
-         padding-left: 0;
-         list-style: none;
-      }
-      .version-tooltip li {
-         margin-bottom: 2px;
-         padding-left: 12px;
-         text-indent: -8px;
-      }
-      .version-tooltip li::before {
-         content: "•";
-         margin-right: 4px;
-      }
-   </style>
 </head>
 <body>
    <button id="newSessionBtn">🔁 New Session</button>

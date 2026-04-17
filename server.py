@@ -50,9 +50,31 @@ logger.addHandler(file_handler)
 # Configuration from environment variables
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 TRUST_PROXY = os.getenv("TRUST_PROXY", "false").lower() in ("true", "1", "yes")
+# PROXY_DEPTH: how many reverse proxies sit in front. Takes the Nth-from-right hop of X-Forwarded-For.
+# Default 1 = last-hop (rightmost is typically the closest proxy; client is leftmost but can be spoofed when depth=0).
+PROXY_DEPTH = max(1, int(os.getenv("PROXY_DEPTH", "1")))
+LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "30"))
+
+# Fail-loud on unsafe CORS combo: wildcard origin + credentials is rejected by browsers AND
+# masks misconfiguration. Require explicit origin list when credentials are enabled.
+ALLOW_CREDENTIALS = True
+if ALLOW_CREDENTIALS and "*" in CORS_ORIGINS:
+    if ENVIRONMENT == "production":
+        raise RuntimeError(
+            "CORS misconfig: CORS_ORIGINS='*' with credentials enabled is invalid in production. "
+            "Set CORS_ORIGINS to explicit origins (e.g., 'https://example.com')."
+        )
+    logging.warning(
+        "CORS_ORIGINS='*' with credentials enabled — browsers will reject. "
+        "Acceptable in development; set explicit origins for production."
+    )
+    ALLOW_CREDENTIALS = False  # Degrade rather than crash dev
+
+# Rate-limit dict bounds — prevents memory growth under IPv6 flood
+MAX_RATE_LIMIT_ENTRIES = int(os.getenv("MAX_RATE_LIMIT_ENTRIES", "10000"))
 
 # Rate limit whitelist — comma-separated IPs or CIDR ranges (e.g., "192.168.1.0/24,10.0.0.1")
 _raw_whitelist = os.getenv("RATE_LIMIT_WHITELIST", "").strip()
@@ -89,9 +111,21 @@ RATE_LIMIT_CLEANUP_INTERVAL = timedelta(minutes=10)
 CREATE_RATE_LIMIT = timedelta(seconds=3)
 
 # Input validation patterns
-USERNAME_RE = re.compile(r"^[A-Za-z]{1,20}$")
-SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{16}$")  # 16 chars for new format
+# Username: 1-30 chars of letters (any script), digits, spaces, hyphens, apostrophes, underscores.
+# Control chars (incl \n, \t) stripped before regex check; leading/trailing whitespace trimmed.
+USERNAME_RE = re.compile(r"^[\w\s\-']{1,30}$", re.UNICODE)
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
+SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{16}$")  # matches token_urlsafe(12) length
 CLIENT_ID_RE = re.compile(r"^[a-zA-Z0-9\-_]{7,36}$")
+
+def sanitize_username(raw):
+    """Strip control chars, trim whitespace, return None if empty or invalid."""
+    if not isinstance(raw, str):
+        return None
+    cleaned = _CONTROL_CHARS_RE.sub("", raw).strip()
+    if not cleaned or not USERNAME_RE.fullmatch(cleaned):
+        return None
+    return cleaned
 
 # Deck validation limits
 DECK_VALUE_MIN = 1
@@ -149,13 +183,35 @@ async def session_cleanup():
             logger.warning(f"Cleaned up {len(to_remove)} expired sessions")
 
 # IP detection helper (proxy-aware)
+def _pick_forwarded_hop(xff_value):
+    """Pick the Nth-from-right hop of X-Forwarded-For per PROXY_DEPTH.
+    Rightmost hop is the closest proxy; PROXY_DEPTH=1 = last-hop (safe default)."""
+    hops = [h.strip() for h in xff_value.split(",") if h.strip()]
+    if not hops:
+        return None
+    idx = max(0, len(hops) - PROXY_DEPTH)
+    return hops[idx]
+
 def get_client_ip(request):
     """Get client IP, checking X-Forwarded-For when behind a trusted proxy."""
     if TRUST_PROXY:
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            picked = _pick_forwarded_hop(forwarded)
+            if picked:
+                return picked
     return request.client.host if request.client else None
+
+def _bound_dict(d, max_entries=None):
+    """Evict oldest entries (by insertion order) when dict exceeds cap."""
+    if max_entries is None:
+        max_entries = MAX_RATE_LIMIT_ENTRIES
+    while len(d) > max_entries:
+        try:
+            oldest_key = next(iter(d))
+            del d[oldest_key]
+        except (StopIteration, KeyError):
+            break
 
 # Socket.IO rate limiting helper
 def check_socket_rate_limit(sid, action, limit=30, window=60):
@@ -177,6 +233,7 @@ def check_socket_rate_limit(sid, action, limit=30, window=60):
 
     # Record this action
     socket_rate_limits[sid][action].append(now)
+    _bound_dict(socket_rate_limits)
     return True
 
 # Rate limit cleanup background task
@@ -211,20 +268,54 @@ async def rate_limit_cleanup():
                 removed_sockets += 1
 
 
+# Log retention cleanup — deletes rotated log files older than LOG_RETENTION_DAYS.
+# Set LOG_RETENTION_DAYS=0 to disable.
+LOG_RETENTION_CHECK_INTERVAL = timedelta(hours=6)
+
+async def log_retention_cleanup():
+    if LOG_RETENTION_DAYS <= 0:
+        return
+    while True:
+        await asyncio.sleep(LOG_RETENTION_CHECK_INTERVAL.total_seconds())
+        try:
+            cutoff = datetime.now(timezone.utc).timestamp() - LOG_RETENTION_DAYS * 86400
+            removed = 0
+            for entry in os.listdir(LOG_DIR):
+                path = os.path.join(LOG_DIR, entry)
+                if not os.path.isfile(path):
+                    continue
+                # Never delete the active log file
+                if entry == "pokering.log":
+                    continue
+                if os.path.getmtime(path) < cutoff:
+                    try:
+                        os.remove(path)
+                        removed += 1
+                    except OSError as e:
+                        logger.warning(f"Failed to delete old log {entry}: {e}")
+            if removed:
+                logger.info(f"Log retention: removed {removed} file(s) older than {LOG_RETENTION_DAYS}d")
+        except Exception as e:
+            logger.error(f"Log retention cleanup failed: {e}")
+
 # Lifespan handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(session_cleanup())
     rate_limit_task = asyncio.create_task(rate_limit_cleanup())
+    log_retention_task = asyncio.create_task(log_retention_cleanup())
     yield
     cleanup_task.cancel()
     rate_limit_task.cancel()
+    log_retention_task.cancel()
 
 # Initialize FastAPI and Socket.IO
+# Socket.IO origin lock: wildcard "*" accepted as string by socketio; explicit list otherwise.
+_sio_cors = "*" if "*" in CORS_ORIGINS else CORS_ORIGINS
 sio = socketio.AsyncServer(
     async_mode='asgi',
     max_http_buffer_size=1_000_000,
-    cors_allowed_origins=[]  # Socket.IO CORS handled by FastAPI middleware
+    cors_allowed_origins=_sio_cors
 )
 app = FastAPI(lifespan=lifespan, title="Pokering Points", version=__version__)
 
@@ -234,7 +325,7 @@ app = FastAPI(lifespan=lifespan, title="Pokering Points", version=__version__)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=ALLOW_CREDENTIALS,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
     max_age=3600,
@@ -245,7 +336,7 @@ app.add_middleware(
 async def get_welcome():
     return FileResponse("public/welcome.html")
 
-@app.get("/create")
+@app.post("/create")
 async def create_session(request: Request):
     # Check global session limit
     if len(sessions) >= MAX_ACTIVE_SESSIONS:
@@ -268,9 +359,10 @@ async def create_session(request: Request):
 
     if client_ip:
         last_create_time[client_ip] = now
+        _bound_dict(last_create_time)
 
-    # Use cryptographically secure session ID generation
-    session_id = secrets.token_urlsafe(12)[:16]  # 16 URL-safe characters
+    # token_urlsafe(12) produces exactly 16 URL-safe characters (12 bytes base64url-encoded)
+    session_id = secrets.token_urlsafe(12)
     sessions[session_id] = {
         "users": {},
         "revealed": False,
@@ -281,7 +373,8 @@ async def create_session(request: Request):
         "votingEnabled": True,
     }
     logger.info(f"Session created: {session_id} by {client_ip}")
-    return RedirectResponse(f"/session/{session_id}")
+    # 303 See Other ensures browser issues GET to the session URL after POST /create
+    return RedirectResponse(f"/session/{session_id}", status_code=303)
 
 @app.get("/session/{session_id}", response_class=HTMLResponse)
 async def get_session(session_id: str):
@@ -301,16 +394,20 @@ async def add_security_headers(request: Request, call_next):
     # Security headers
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
     # Content Security Policy
+    # connect-src: ws/wss for Socket.IO; add localhost origins only in development
+    connect_src = "connect-src 'self' ws: wss:"
+    if ENVIRONMENT != "production":
+        connect_src += " http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*"
+
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' https://cdn.jsdelivr.net",
+        "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",
-        "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*",
+        connect_src,
         "font-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",
@@ -509,19 +606,21 @@ socket_ip_map = {}
 # Socket.IO handlers
 @sio.event
 async def connect(sid, environ):
-    # Store client IP for rate limit whitelist checks
+    # Store client IP for rate limit whitelist checks. Read from server-side environ only;
+    # clients cannot spoof this.
     ip_addr = None
     if TRUST_PROXY:
         headers = dict(environ.get("asgi.scope", {}).get("headers", []))
         forwarded = headers.get(b"x-forwarded-for", b"").decode()
         if forwarded:
-            ip_addr = forwarded.split(",")[0].strip()
+            ip_addr = _pick_forwarded_hop(forwarded)
     if not ip_addr:
         scope = environ.get("asgi.scope", {})
         if scope.get("client"):
             ip_addr = scope["client"][0]
     if ip_addr:
         socket_ip_map[sid] = ip_addr
+        _bound_dict(socket_ip_map)
 
 RECONNECT_GRACE = 2  # seconds — delay leave broadcasts to tolerate brief disconnects
 
@@ -568,7 +667,6 @@ async def join(sid, data):
         return
 
     client_id = data.get("clientId")
-    ip_addr = None
     session_id = data.get("sessionId")
     username = data.get("username")
 
@@ -579,19 +677,12 @@ async def join(sid, data):
 
     # Validate client_id format with strict regex
     if not isinstance(client_id, str) or not CLIENT_ID_RE.fullmatch(client_id):
-        logger.warning(f"Invalid client ID format: {client_id[:20]}")
+        logger.warning(f"Invalid client ID format: {str(client_id)[:20]}")
         await sio.emit("joinFailed", {"reason": "Invalid client ID"}, room=sid)
         return
 
-    if "asgi.scope" in data:
-        scope = data["asgi.scope"]
-        if TRUST_PROXY:
-            headers = dict(scope.get("headers", []))
-            forwarded = headers.get(b"x-forwarded-for", b"").decode()
-            if forwarded:
-                ip_addr = forwarded.split(",")[0].strip()
-        if not ip_addr and scope.get("client"):
-            ip_addr, _ = scope["client"]
+    # IP is server-stored from `connect` handler — never trust client-supplied scope.
+    ip_addr = socket_ip_map.get(sid)
 
     now = datetime.now(timezone.utc)
 
@@ -601,6 +692,7 @@ async def join(sid, data):
 
     if ip_addr:
         last_join_time[ip_addr] = now
+        _bound_dict(last_join_time)
 
     if session_id not in sessions:
         await sio.emit("joinFailed", {"reason": "Session not found"}, room=sid)
@@ -612,8 +704,9 @@ async def join(sid, data):
         await sio.emit("joinFailed", {"reason": "Session is full"}, room=sid)
         return
 
-    if not isinstance(username, str) or not USERNAME_RE.fullmatch(username):
-        await sio.emit("joinFailed", {"reason": "Invalid username (letters only, max 20)."}, room=sid)
+    username = sanitize_username(username)
+    if username is None:
+        await sio.emit("joinFailed", {"reason": "Invalid username (letters, digits, spaces; max 30)."}, room=sid)
         return
 
     if sessions[session_id]["hostClientId"] is None:
