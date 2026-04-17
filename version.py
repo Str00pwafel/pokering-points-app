@@ -1,6 +1,21 @@
-__version__ = "1.4.1"
+__version__ = "1.4.2"
 
 __changelog__ = {
+    "1.4.2": [
+        "Security: self-hosted socket.io client, dropped jsdelivr from CSP",
+        "Security: connect-src CSP narrowed in production (no localhost origins)",
+        "Security: fail-loud on CORS_ORIGINS=* with credentials in production",
+        "Security: removed deprecated X-XSS-Protection header",
+        "Security: session ID now uses full token_urlsafe(12) length (dropped redundant slice)",
+        "Security: username regex broadened to unicode letters/digits/spaces with control-char stripping",
+        "Security: Socket.IO cors_allowed_origins now locked to CORS_ORIGINS",
+        "Security: /create switched from GET to POST (303 redirect) to avoid prefetch state change",
+        "Security: join handler no longer reads client-supplied asgi.scope for IP — uses server-stored map",
+        "PROXY_DEPTH env var for multi-proxy X-Forwarded-For parsing (default last-hop)",
+        "Rate-limit tracking dicts bounded via MAX_RATE_LIMIT_ENTRIES with oldest-first eviction",
+        "LOG_RETENTION_DAYS env var (default 30) with background cleanup of rotated log files",
+        "Version badge styles moved from inline <style> block to public/css/version-badge.css",
+    ],
     "1.4.1": [
         "Clickable version badge opens full changelog page in new tab",
         "Full version history: changelogs for all versions from 1.0.0 to current",
