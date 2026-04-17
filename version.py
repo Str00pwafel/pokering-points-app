@@ -1,6 +1,20 @@
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 
 __changelog__ = {
+    "1.4.1": [
+        "Clickable version badge opens full changelog page in new tab",
+        "Full version history: changelogs for all versions from 1.0.0 to current",
+        "Rate limit IP whitelist via RATE_LIMIT_WHITELIST environment variable",
+        "Socket reconnect: auto-rejoin with preserved vote state, connection status indicator",
+        "Toast notifications: join, leave, deck change, connection restored, link copied",
+        "Deck change toast shows friendly deck name",
+        "User list revamp: voted/pending/spectator states, vote count, live status row",
+        "Playing-card redesign: corner values, gradient depth, hover/select lift",
+        "Revealed vote cards: bigger, corner values, outlier glow, names wrap below card",
+        "Stat tiles: Average, Median, Votes count, Consensus celebration or Outlier count",
+        "Card flip animation on reveal; confetti on unanimous consensus",
+        "User leave grace period (2s) prevents false leaves on reconnect",
+    ],
     "1.4.0": [
         "Host session settings modal: sliders for join voting and start voting enabled",
         "Host can lock/unlock voting from the game UI (only when no votes cast)",
@@ -10,9 +24,6 @@ __changelog__ = {
         "New Session button redesigned from link to button with disabled state",
         "In-place re-vote: Start New Round resets votes without redirect or new session",
         "Host vote decision now scoped per-session to prevent modal skip across sessions",
-        "Clickable version badge opens full changelog page in new tab",
-        "Full version history: changelogs for all versions from 1.0.0 to current",
-        "Rate limit IP whitelist via RATE_LIMIT_WHITELIST environment variable",
     ],
     "1.3.2": [
         "Fix rate limiting: reduce create session cooldown from 10s to 3s",

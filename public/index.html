@@ -79,7 +79,6 @@
             <button id="newRoundBtn" style="display:none;">➡️ Start New Round</button>
             <button id="toggleVotingBtn" style="display:none;">🔒 Unlock Voting</button>
             <button id="copyLinkBtn">🔗 Copy Session Link</button>
-            <p id="copiedMsg" style="display:none; font-size: 14px; color: lightgreen;">Copied to clipboard!</p>
          </div>
          <h2>Pick your estimate</h2>
          <div id="status"></div>
@@ -90,7 +89,10 @@
          <div id="voteSummary"></div>
       </div>
       <div id="userList">
-         <h3>Users</h3>
+         <div class="user-list-header">
+            <h3>Users</h3>
+            <span id="userCount" class="user-count"></span>
+         </div>
          <div id="userListContent"></div>
       </div>
    </div>
@@ -123,6 +125,7 @@
          <button id="hostSettingsConfirm">Join Session</button>
       </div>
    </div>
+   <div id="toastContainer" aria-live="polite" aria-atomic="false"></div>
    <div id="hostLeftOverlay" class="host-left-overlay hidden">
       <div class="host-left-message">
          <h2>The host has left the session</h2>

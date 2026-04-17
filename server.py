@@ -523,6 +523,21 @@ async def connect(sid, environ):
     if ip_addr:
         socket_ip_map[sid] = ip_addr
 
+RECONNECT_GRACE = 2  # seconds — delay leave broadcasts to tolerate brief disconnects
+
+async def _delayed_leave(session_id, client_id, username, was_host):
+    await asyncio.sleep(RECONNECT_GRACE)
+    session = sessions.get(session_id)
+    if session is None:
+        return
+    # User reconnected within grace window — abort
+    if any(u.get("clientId") == client_id for u in session["users"].values()):
+        return
+    if was_host:
+        await sio.emit('hostLeft', room=session_id)
+    else:
+        await sio.emit('userLeft', {'username': username}, room=session_id)
+
 @sio.event
 async def disconnect(sid):
     socket_ip_map.pop(sid, None)
@@ -531,10 +546,11 @@ async def disconnect(sid):
             user = sessions[session_id]["users"][sid]
             username = user.get("username", "unknown")
             was_host = user.get("isHost", False)
+            client_id = user.get("clientId")
             del sessions[session_id]["users"][sid]
             logger.info(f"User disconnected: {username} from session {session_id}")
-            if was_host:
-                await sio.emit('hostLeft', room=session_id)
+            if client_id:
+                asyncio.create_task(_delayed_leave(session_id, client_id, username, was_host))
             await sio.emit('usersUpdate', sessions[session_id]["users"], room=session_id)
             break
 
@@ -610,18 +626,30 @@ async def join(sid, data):
 
     is_host = client_id == sessions[session_id]["hostClientId"]
 
-    duplicate_client = any(u.get("clientId") == client_id for u in sessions[session_id]["users"].values())
-    if duplicate_client:
-        await sio.emit("joinFailed", {"reason": "Client already connected"}, room=sid)
-        return
+    # Detect reconnect: if clientId already present, replace old sid and preserve state
+    preserved_vote = None
+    preserved_wants_to_vote = None
+    old_sid = None
+    for existing_sid, u in sessions[session_id]["users"].items():
+        if u.get("clientId") == client_id:
+            old_sid = existing_sid
+            preserved_vote = u.get("vote")
+            preserved_wants_to_vote = u.get("wantsToVote")
+            break
+    if old_sid:
+        sessions[session_id]["users"].pop(old_sid, None)
+        socket_ip_map.pop(old_sid, None)
+        logger.info(f"Reconnect: clientId {client_id[:12]} replacing old sid in session {session_id}")
 
     user_data = {
         "username": username,
-        "vote": None,
+        "vote": preserved_vote,
         "isHost": is_host,
         "clientId": client_id
     }
 
+    if preserved_wants_to_vote is not None:
+        user_data["wantsToVote"] = preserved_wants_to_vote
     if "wantsToVote" in data:
         user_data["wantsToVote"] = data["wantsToVote"]
 
@@ -638,6 +666,10 @@ async def join(sid, data):
 
     await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
     await sio.emit("sessionState", {"votingEnabled": sessions[session_id].get("votingEnabled", True)}, room=session_id)
+
+    # Broadcast join notification only for fresh joins (not reconnects)
+    if not old_sid:
+        await sio.emit("userJoined", {"username": username, "clientId": client_id}, room=session_id)
 
 @sio.event
 async def vote(sid, data):

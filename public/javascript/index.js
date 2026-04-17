@@ -1,4 +1,54 @@
-const socket = io();
+const socket = io({
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+});
+
+let connectionStatus = 'connecting';
+let hasConnectedOnce = false;
+
+function showToast(message, type = 'info', duration = 3000) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  // Force reflow so transition runs
+  void toast.offsetWidth;
+  toast.classList.add('show');
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+function updateConnectionIndicator() {
+  const el = document.getElementById('connectionIndicator');
+  if (!el) return;
+  el.className = `connection-indicator ${connectionStatus}`;
+  const labels = {
+    connected: 'Connected',
+    connecting: 'Connecting…',
+    reconnecting: 'Reconnecting…',
+    disconnected: 'Disconnected',
+  };
+  el.title = labels[connectionStatus] || '';
+  el.setAttribute('aria-label', el.title);
+}
+
+function rejoinSession() {
+  if (!username) return;
+  const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
+  socket.emit('join', {
+    sessionId,
+    username,
+    clientId,
+    deckType: currentDeckType,
+    wantsToVote: hostVoteDecision !== null ? (hostVoteDecision === "true") : undefined
+  });
+}
 
 function escapeHTML(str) {
   const div = document.createElement('div');
@@ -116,6 +166,12 @@ const DECK_PRESETS = {
   tshirt: ["XS", "S", "M", "L", "XL", "XXL", "?"]
 };
 
+const DECK_LABELS = {
+  fibonacci: "Fibonacci (1-21)",
+  hours: "Hours (1-40)",
+  tshirt: "T-Shirt (XS-XXL)",
+};
+
 let currentDeckType = sessionStorage.getItem("jiraPokerDeckType") || "fibonacci";
 if (!DECK_PRESETS[currentDeckType]) currentDeckType = "fibonacci";
 let cardValues = DECK_PRESETS[currentDeckType];
@@ -131,7 +187,8 @@ function renderCards() {
   cardValues.forEach(value => {
     const card = document.createElement('div');
     card.classList.add('card');
-    card.innerText = value;
+    card.dataset.value = value;
+    card.textContent = value;
     card.onclick = () => selectCard(card, value);
     cardContainer.appendChild(card);
   });
@@ -145,12 +202,19 @@ document.getElementById('deckSelector').addEventListener('change', (e) => {
   socket.emit('changeDeck', { sessionId, deckType: newDeckType });
 });
 
+let deckInitialized = false;
 socket.on('deckChanged', ({ deckType }) => {
   if (DECK_PRESETS[deckType]) {
+    const changed = deckInitialized && deckType !== currentDeckType;
     currentDeckType = deckType;
     cardValues = DECK_PRESETS[currentDeckType];
     document.getElementById('deckSelector').value = currentDeckType;
     renderCards();
+    if (changed) {
+      const label = DECK_LABELS[deckType] || deckType;
+      showToast(`Deck changed to ${label}`, 'info');
+    }
+    deckInitialized = true;
   }
 });
 
@@ -185,12 +249,10 @@ function startNewRound() {
 function copyLink() {
   const url = `${window.location.origin}/session/${sessionId}`;
   navigator.clipboard.writeText(url).then(() => {
-    const msg = document.getElementById('copiedMsg');
-    msg.style.display = 'block';
-    setTimeout(() => msg.style.display = 'none', 2000);
+    showToast('Session link copied to clipboard', 'success');
   }).catch(err => {
     console.error('Failed to copy:', err);
-    showModal('Failed to copy session link to clipboard.', null, false, false, true);
+    showToast('Failed to copy session link', 'error');
   });
 }
 
@@ -198,6 +260,7 @@ socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
   selectedCard = null;
   votesRevealed = false;
   pendingVotingEnabled = null;
+  const votingChanged = votingEnabled !== enabled;
   votingEnabled = enabled;
 
   document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
@@ -213,9 +276,25 @@ socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
 
   updateVotingLockState();
   updateToggleBtnLabel();
+  showToast('New round started', 'info');
+  if (votingChanged) {
+    showToast(enabled ? 'Voting unlocked' : 'Voting locked', enabled ? 'success' : 'info');
+  }
 });
 
+function ensureConnectionIndicator() {
+  if (document.getElementById('connectionIndicator')) return;
+  const header = document.querySelector('#userList .user-list-header');
+  if (!header) return;
+  const dot = document.createElement('span');
+  dot.id = 'connectionIndicator';
+  dot.className = `connection-indicator ${connectionStatus}`;
+  header.appendChild(dot);
+  updateConnectionIndicator();
+}
+
 socket.on('usersUpdate', users => {
+  ensureConnectionIndicator();
   const myUser = Object.values(users).find(u => u.clientId === clientId);
   const isHost = myUser?.isHost;
 
@@ -248,42 +327,57 @@ socket.on('usersUpdate', users => {
   const selected = votingUsers.filter(u => u.vote !== null).length;
   document.getElementById('status').innerText = `${selected} of ${votingUsers.length} selected`;
 
+  const userCountEl = document.getElementById('userCount');
+  if (userCountEl) {
+    userCountEl.textContent = `${selected}/${votingUsers.length} voted`;
+  }
+
   const userListContent = document.getElementById('userListContent');
   if (userListContent) {
     userListContent.innerHTML = '';
 
     userList.forEach(user => {
-      const userItem = document.createElement('div');
-      userItem.style.display = 'flex';
-      userItem.style.alignItems = 'center';
-      userItem.style.justifyContent = 'flex-start';
-      userItem.style.gap = '8px';
-      userItem.style.padding = '4px 0';
-      userItem.style.fontSize = '16px';
+      const isSpectator = user.isHost && user.wantsToVote === false;
+      const hasVoted = user.vote !== null;
 
-      const dot = document.createElement('span');
-      dot.style.display = 'inline-block';
-      dot.style.width = '10px';
-      dot.style.height = '10px';
-      dot.style.borderRadius = '50%';
+      const row = document.createElement('div');
+      row.className = 'user-row';
+      if (isSpectator) row.classList.add('spectator');
+      else if (hasVoted) row.classList.add('voted');
+      else row.classList.add('pending');
 
-      dot.style.backgroundColor = (user.vote !== null) ? 'limegreen' : 'gray';
+      const status = document.createElement('span');
+      status.className = 'user-status';
+      if (isSpectator) status.textContent = '👁';
+      else if (hasVoted) status.textContent = '✓';
+      else status.textContent = '⋯';
+      status.title = isSpectator ? 'Spectating' : (hasVoted ? 'Voted' : 'Waiting');
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'user-name';
       nameSpan.textContent = user.username;
       nameSpan.title = user.username;
 
-      if (user.isHost && user.wantsToVote === false) {
-        nameSpan.style.opacity = '0.6';
-        nameSpan.textContent += ' (Host is not voting)';
-      } else if (user.isHost && user.wantsToVote === true) {
-        nameSpan.textContent += ' (Host)';
+      row.appendChild(status);
+      row.appendChild(nameSpan);
+
+      if (user.isHost) {
+        const badge = document.createElement('span');
+        badge.className = 'user-badge host';
+        badge.textContent = '👑';
+        badge.title = 'Host';
+        row.appendChild(badge);
       }
 
-      userItem.appendChild(dot);
-      userItem.appendChild(nameSpan);
-      userListContent.appendChild(userItem);
+      // Show vote value chip after reveal
+      if (votesRevealed && hasVoted && !isSpectator) {
+        const chip = document.createElement('span');
+        chip.className = 'user-vote-chip';
+        chip.textContent = user.vote;
+        row.appendChild(chip);
+      }
+
+      userListContent.appendChild(row);
     });
   }
 });
@@ -307,32 +401,89 @@ socket.on('revealVotes', ({ users, stats }) => {
   const votingUsers = Object.values(users).filter(u => !(u.isHost && u.wantsToVote === false));
 
   const results = votingUsers
-    .map(u => {
+    .map((u, i) => {
       const isOutlier = stats?.outliers?.includes(u.username);
+      const delay = (i * 80).toString();
+      const safeVote = escapeHTML(String(u.vote));
       return `
-        <div class="vote-card${isOutlier ? ' outlier' : ''}">
+        <div class="vote-card-wrapper${isOutlier ? ' outlier' : ''}">
+          <div class="vote-card${isOutlier ? ' outlier' : ''}" data-value="${safeVote}" style="animation-delay:${delay}ms">
+            <div class="vote-value">${safeVote}</div>
+          </div>
           <p class="voter-name" title="${escapeHTML(u.username)}">${escapeHTML(u.username)}</p>
-          <div class="vote-value">${u.vote}</div>
         </div>
       `;
     })
     .join('');
 
-  let summary = "";
+  const realVotesForStats = votingUsers.map(u => u.vote).filter(v => v !== null && v !== '?');
+  const uniqueVotes = new Set(realVotesForStats).size;
+  const allAgreed = realVotesForStats.length >= 2 && uniqueVotes === 1;
+
+  const statTiles = [];
   if (stats?.average !== undefined) {
-    summary += `<div class="vote-summary">Average: ${stats.average}</div>`;
+    statTiles.push(`<div class="stat-tile"><span class="stat-label">Average</span><span class="stat-value">${stats.average}</span></div>`);
   }
   if (stats?.median !== undefined) {
-    summary += `<div class="vote-summary">Median: ${stats.median}</div>`;
+    statTiles.push(`<div class="stat-tile"><span class="stat-label">Median</span><span class="stat-value">${escapeHTML(String(stats.median))}</span></div>`);
   }
+  if (realVotesForStats.length > 0) {
+    statTiles.push(`<div class="stat-tile"><span class="stat-label">Votes</span><span class="stat-value">${realVotesForStats.length}</span></div>`);
+  }
+  if (allAgreed) {
+    statTiles.push(`<div class="stat-tile consensus"><span class="stat-label">Consensus</span><span class="stat-value">🎉</span></div>`);
+  } else if (stats?.outliers?.length) {
+    statTiles.push(`<div class="stat-tile outlier"><span class="stat-label">Outliers</span><span class="stat-value">${stats.outliers.length}</span></div>`);
+  }
+  const summary = statTiles.length ? `<div class="stat-row">${statTiles.join('')}</div>` : '';
 
   document.getElementById('votesDisplay').innerHTML = results;
   document.getElementById('voteSummary').innerHTML = summary;
+
+  // Consensus detection: all non-"?" votes identical, at least 2 voters
+  const realVotes = votingUsers.map(u => u.vote).filter(v => v !== null && v !== '?');
+  if (realVotes.length >= 2 && realVotes.every(v => v === realVotes[0])) {
+    const totalDelay = votingUsers.length * 80 + 500;
+    setTimeout(() => launchConfetti(), totalDelay);
+  }
 });
+
+function launchConfetti() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const colors = ['#ff3b3b', '#ffbf00', '#2ecc40', '#0074d9', '#b10dc9', '#ff851b', '#ffffff'];
+  const container = document.createElement('div');
+  container.className = 'confetti-container';
+  document.body.appendChild(container);
+
+  const pieces = 80;
+  for (let i = 0; i < pieces; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDuration = (2 + Math.random() * 2) + 's';
+    piece.style.animationDelay = Math.random() * 0.5 + 's';
+    piece.style.width = (6 + Math.random() * 6) + 'px';
+    piece.style.height = (10 + Math.random() * 8) + 'px';
+    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+    container.appendChild(piece);
+  }
+
+  setTimeout(() => container.remove(), 5000);
+}
 
 socket.on('hostLeft', () => {
   const overlay = document.getElementById('hostLeftOverlay');
   if (overlay) overlay.classList.remove('hidden');
+});
+
+socket.on('userLeft', ({ username: name }) => {
+  if (name && name !== username) showToast(`${name} left the session`, 'info');
+});
+
+socket.on('userJoined', ({ username: name, clientId: joinedClientId }) => {
+  if (!name || joinedClientId === clientId) return;
+  showToast(`${name} joined the session`, 'success');
 });
 
 socket.on('joinFailed', ({ reason }) => {
@@ -404,8 +555,34 @@ function showModal(message, onConfirm, withInput = false, yesNoMode = false, hid
 }
 
 socket.on('sessionState', ({ votingEnabled: enabled }) => {
+  const changed = votingEnabled !== enabled;
   votingEnabled = enabled;
   updateVotingLockState();
+  if (changed && hasConnectedOnce && !votesRevealed) {
+    showToast(enabled ? 'Voting unlocked' : 'Voting locked', enabled ? 'success' : 'info');
+  }
+});
+
+socket.on('connect', () => {
+  const wasDisconnected = connectionStatus === 'disconnected' || connectionStatus === 'reconnecting';
+  connectionStatus = 'connected';
+  updateConnectionIndicator();
+  if (wasDisconnected) {
+    rejoinSession();
+    showToast('Connection restored', 'success');
+  }
+  hasConnectedOnce = true;
+});
+
+socket.on('disconnect', () => {
+  connectionStatus = 'disconnected';
+  updateConnectionIndicator();
+  if (hasConnectedOnce) showToast('Connection lost — reconnecting…', 'error', 2500);
+});
+
+socket.io.on('reconnect_attempt', () => {
+  connectionStatus = 'reconnecting';
+  updateConnectionIndicator();
 });
 
 function updateVotingLockState() {
