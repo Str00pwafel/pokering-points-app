@@ -127,12 +127,6 @@ def sanitize_username(raw):
         return None
     return cleaned
 
-# Deck validation limits
-DECK_VALUE_MIN = 1
-DECK_VALUE_MAX = 1000
-DECK_SIZE_MIN = 2
-DECK_SIZE_MAX = 20
-
 # Deck presets (? is always valid as "unsure")
 DECK_PRESETS = {
     "fibonacci": [1, 2, 3, 5, 8, 13, 21, "?"],
@@ -241,18 +235,19 @@ async def rate_limit_cleanup():
     while True:
         await asyncio.sleep(RATE_LIMIT_CLEANUP_INTERVAL.total_seconds())
         now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(minutes=30)
+        join_cutoff = now - timedelta(minutes=30)
+        # create cooldown is 3s; short retention prevents unnecessary memory growth
+        create_cutoff = now - timedelta(minutes=1)
 
-        # Clean up old IP-based rate limit entries
         removed_join = 0
         for ip in list(last_join_time.keys()):
-            if last_join_time[ip] < cutoff:
+            if last_join_time[ip] < join_cutoff:
                 del last_join_time[ip]
                 removed_join += 1
 
         removed_create = 0
         for ip in list(last_create_time.keys()):
-            if last_create_time[ip] < cutoff:
+            if last_create_time[ip] < create_cutoff:
                 del last_create_time[ip]
                 removed_create += 1
 
@@ -760,6 +755,14 @@ async def join(sid, data):
     await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
     await sio.emit("sessionState", {"votingEnabled": sessions[session_id].get("votingEnabled", True)}, room=session_id)
 
+    # Sync countdown for mid-countdown joiners so they see remaining time
+    if sessions[session_id].get("countdownActive"):
+        started = sessions[session_id].get("countdownStartedAt")
+        if started:
+            elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+            remaining = max(0, 3 - int(elapsed))
+            await sio.emit("countdown", remaining, room=sid)
+
     # Broadcast join notification only for fresh joins (not reconnects)
     if not old_sid:
         await sio.emit("userJoined", {"username": username, "clientId": client_id}, room=session_id)
@@ -811,6 +814,7 @@ async def vote(sid, data):
             sessions[session_id]["revealed"] = True
 
             sessions[session_id]["countdownActive"] = True
+            sessions[session_id]["countdownStartedAt"] = datetime.now(timezone.utc)
             count = 3
             async def countdown():
                 nonlocal count
@@ -847,7 +851,9 @@ async def vote(sid, data):
                         avg = sum(numeric_votes) / len(numeric_votes)
                         vote_stats["average"] = round(avg, 2)
 
-                    # Median and outliers work for all deck types via index position
+                    # Median and outliers work for all deck types via index position.
+                    # For even vote counts this picks the upper-middle (no interpolation —
+                    # decks are ordinal, not strictly numeric, so interpolation isn't safe).
                     idxs = sorted(index_of[v] for _, v in voted)
                     median_idx = idxs[len(idxs) // 2]
                     vote_stats["median"] = deck[median_idx]
@@ -866,14 +872,14 @@ async def vote(sid, data):
                     "stats": vote_stats
                 }, room=session_id)
 
-            asyncio.create_task(countdown())
+            sessions[session_id]["countdownTask"] = asyncio.create_task(countdown())
 
 @sio.event
 async def requestNewRound(sid, data):
-    # Rate limiting: 3 new rounds per hour
+    # Rate limiting: 30 new rounds per hour
     if not check_socket_rate_limit(sid, "requestNewRound", limit=30, window=3600):
         logger.warning(f"New round rate limit exceeded for socket {sid}")
-        await sio.emit("joinFailed", {"reason": "Too many new round requests"}, room=sid)
+        await sio.emit("actionFailed", {"action": "newRound", "reason": "Too many new round requests"}, room=sid)
         return
 
     # Validate data structure
@@ -893,12 +899,18 @@ async def requestNewRound(sid, data):
 
     user = old_session["users"].get(sid)
     if not user or not user.get("isHost"):
-        await sio.emit("joinFailed", {"reason": "Only host can request new round"}, room=sid)
+        await sio.emit("actionFailed", {"action": "newRound", "reason": "Only host can request new round"}, room=sid)
         return
 
     # Block during countdown (revealed still False but countdown task running)
     if old_session.get("countdownActive"):
         return
+
+    # Cancel any stale countdown task defensively (countdownActive gate above should prevent this path)
+    stale_task = old_session.pop("countdownTask", None)
+    if stale_task and not stale_task.done():
+        stale_task.cancel()
+    old_session.pop("countdownStartedAt", None)
 
     # Determine deck for new round
     deck_type = data.get("deckType", DEFAULT_DECK_TYPE)
@@ -962,6 +974,7 @@ async def changeDeck(sid, data):
 
     session["deck"] = DECK_PRESETS[deck_type]
     session["deckType"] = deck_type
+    session["revealed"] = False  # defensive — changeDeck only runs with no votes cast
     logger.info(f"Deck changed to {deck_type} in session {session_id}")
 
     await sio.emit("deckChanged", {"deckType": deck_type}, room=session_id)
@@ -1029,6 +1042,7 @@ async def setVotingEnabled(sid, data):
         return
 
     session["votingEnabled"] = voting_enabled
+    session["revealed"] = False  # defensive — setVotingEnabled only runs with no votes cast
     logger.info(f"Voting {'enabled' if voting_enabled else 'disabled'} in session {session_id}")
 
     await sio.emit("sessionState", {"votingEnabled": voting_enabled}, room=session_id)

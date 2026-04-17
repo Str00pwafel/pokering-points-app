@@ -500,6 +500,10 @@ socket.on('joinFailed', ({ reason }) => {
   });
 });
 
+socket.on('actionFailed', ({ action, reason }) => {
+  showToast(reason || `Action failed${action ? ` (${action})` : ''}`, 'error', 4000);
+});
+
 function showModal(message, onConfirm, withInput = false, yesNoMode = false, hideCancel = false, prefill = '') {
   const backdrop = document.getElementById('modalBackdrop');
   const messageEl = document.getElementById('modalMessage');
