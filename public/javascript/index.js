@@ -60,9 +60,17 @@ function isValidUsername(name) {
   return /^[a-zA-Z]{1,20}$/.test(name);
 }
 
+function postCreate() {
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/create';
+  document.body.appendChild(form);
+  form.submit();
+}
+
 const sessionId = window.location.pathname.split('/').pop();
 if (!sessionId || sessionId === 'session' || sessionId === 'undefined') {
-  window.location.href = '/create';
+  postCreate();
 }
 
 let username = sessionStorage.getItem("jiraPokerUsername") || localStorage.getItem("jiraPokerUsername") || "";
@@ -155,7 +163,7 @@ window.addEventListener('load', () => {
     }
   });
   document.getElementById('hostLeftNewSession').addEventListener('click', () => {
-    window.location.href = '/create';
+    postCreate();
   });
   document.getElementById('hostSettingsConfirm').addEventListener('click', confirmHostSettings);
 });
@@ -641,7 +649,7 @@ document.getElementById('newSessionBtn').addEventListener('click', (e) => {
       Object.keys(sessionStorage)
         .filter(k => k.startsWith('jiraPokerHostVoteDecision_'))
         .forEach(k => sessionStorage.removeItem(k));
-      window.location.href = '/create';
+      postCreate();
     }
   );
 });
