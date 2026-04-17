@@ -60,7 +60,8 @@
         "secondary-action": "#36454F",
         "secondary-hover": "#2C3E50",
         "text-primary": "#FFFFFF",
-        "text-secondary": "#FFF5E6"
+        "text-secondary": "#FFF5E6",
+        "user-list-bg": "rgba(0, 0, 0, 0.25)"
       },
       "logo": "beardcraft.png",
       "decorations": {

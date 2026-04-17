@@ -396,7 +396,7 @@ button:disabled {
 
 #userList {
 	width: 240px;
-	background: rgba(255, 255, 255, 0.05);
+	background: var(--user-list-bg, rgba(255, 255, 255, 0.05));
 	padding: 14px;
 	border-radius: 10px;
 }
