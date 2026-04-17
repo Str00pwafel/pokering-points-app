@@ -1,6 +1,16 @@
-__version__ = "1.4.2"
+__version__ = "1.4.3"
 
 __changelog__ = {
+    "1.4.3": [
+        "Correctness: actionFailed event for non-join rejections (host-only, rate-limit) — no redirect loop",
+        "Correctness: countdown state synced to mid-countdown joiners (rejoin shows remaining time)",
+        "Correctness: countdownTask stored + cancelled defensively on new round",
+        "Correctness: revealed flag reset defensively in changeDeck / setVotingEnabled",
+        "Correctness: last_create_time prune cutoff 30min → 1min (matches 3s cooldown)",
+        "Correctness: upper-median documented for even vote counts (ordinal-safe, no interpolation)",
+        "Correctness: requestNewRound rate-limit comment fixed (was '3/hr', actual 30/hr)",
+        "Cleanup: removed unused DECK_VALUE_MIN/MAX and DECK_SIZE_MIN/MAX constants",
+    ],
     "1.4.2": [
         "Security: self-hosted socket.io client, dropped jsdelivr from CSP",
         "Security: connect-src CSP narrowed in production (no localhost origins)",
