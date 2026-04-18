@@ -11,10 +11,22 @@ body {
 }
 
 img.logo {
-	width: 350px;
-	max-width: 80%;
-	margin-bottom: 20px;
+	width: 500px;
+	max-width: 100%;
+	margin-bottom: 60px;
 	display: block;
+}
+
+a.logo-link {
+	display: block;
+	margin-bottom: 20px;
+	margin-top: -200px;
+}
+
+a.logo-link img.logo {
+	margin-bottom: 0;
+	margin-left: auto;
+	margin-right: auto;
 }
 
 /* Christmas theme decorations */
