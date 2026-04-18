@@ -37,8 +37,8 @@
         "santaHat": {
           "enabled": true,
           "size": 120,
-          "top": -10,
-          "marginLeft": -85,
+          "top": -20,
+          "marginLeft": -95,
           "rotation": -15
         },
         "snowflakes": {
