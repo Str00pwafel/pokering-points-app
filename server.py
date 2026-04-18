@@ -488,7 +488,7 @@ async def get_theme():
             "text-primary": "#ffffff",
             "text-secondary": "#cccccc"
         },
-        "logo": "beardcraft.png"
+        "logo": "beardcraft_v1.png"
     }
 
     try:
