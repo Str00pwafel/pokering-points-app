@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tooltip = document.getElementById('versionTooltip');
     if (tooltip && changelog) {
       tooltip.innerHTML = Object.entries(changelog)
-        .map(([v, items]) => `<h4>v${v}</h4><ul>${items.map(c => `<li>${c}</li>`).join('')}</ul>`)
+        .map(([v, items]) => `<h4>v${v}</h4><ul>${items.map((c) => `<li>${c}</li>`).join('')}</ul>`)
         .join('');
     }
   } catch {}

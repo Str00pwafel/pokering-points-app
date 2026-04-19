@@ -1,31 +1,44 @@
 /* Theme Variables - Dynamically updated by theme-loader.js */
 :root {
-    /* Background colors */
-    --primary-bg: #001f3f;
-    --card-bg: #003366;
-    --modal-bg: #003366;
+  /* Background colors */
+  --primary-bg: #001f3f;
+  --card-bg: #003366;
+  --modal-bg: #003366;
 
-    /* Action colors */
-    --primary-action: #0074D9;
-    --primary-hover: #005fa3;
-    --secondary-action: #FF851B;
-    --secondary-hover: #cc6c16;
+  /* Action colors */
+  --primary-action: #0074d9;
+  --primary-hover: #005fa3;
+  --secondary-action: #ff851b;
+  --secondary-hover: #cc6c16;
 
-    /* State colors */
-    --success: #2ECC40;
-    --error: #FF4136;
+  /* State colors */
+  --success: #2ecc40;
+  --error: #ff4136;
 
-    /* Text colors */
-    --text-primary: #ffffff;
-    --text-secondary: #cccccc;
+  /* Text colors */
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
 
-    /* Smooth transitions for theme changes */
-    transition: background-color 0.4s ease, color 0.4s ease;
+  /* Smooth transitions for theme changes */
+  transition:
+    background-color 0.4s ease,
+    color 0.4s ease;
 }
 
 /* Smooth transitions for themed elements only */
-body, button, .card, .vote-card, .vote-value,
-#modalContent, #newSessionBtn, #deckSelector,
-#newRoundBtn, #userList, .host-left-message {
-    transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+body,
+button,
+.card,
+.vote-card,
+.vote-value,
+#modalContent,
+#newSessionBtn,
+#deckSelector,
+#newRoundBtn,
+#userList,
+.host-left-message {
+  transition:
+    background-color 0.4s ease,
+    color 0.4s ease,
+    border-color 0.4s ease;
 }

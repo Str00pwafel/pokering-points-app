@@ -1,178 +1,187 @@
 body {
-	background-color: var(--primary-bg);
-	color: var(--text-primary);
-	font-family: sans-serif;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	height: 100vh;
-	text-align: center;
+  background-color: var(--primary-bg);
+  color: var(--text-primary);
+  font-family: sans-serif;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  text-align: center;
 }
 
 img.logo {
-	width: 500px;
-	max-width: 100%;
-	margin-bottom: 60px;
-	display: block;
+  width: 500px;
+  max-width: 100%;
+  margin-bottom: 60px;
+  display: block;
 }
 
 a.logo-link {
-	display: block;
-	margin-bottom: 20px;
-	margin-top: -200px;
+  display: block;
+  margin-bottom: 20px;
+  margin-top: -200px;
 }
 
 a.logo-link img.logo {
-	margin-bottom: 0;
-	margin-left: auto;
-	margin-right: auto;
+  margin-bottom: 0;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* Christmas theme decorations */
 .logo-container {
-	position: relative;
-	display: inline-block;
-	width: 350px;
-	max-width: 80%;
-	margin-bottom: 20px;
+  position: relative;
+  display: inline-block;
+  width: 350px;
+  max-width: 80%;
+  margin-bottom: 20px;
 }
 
 .logo-container img.logo {
-	max-width: 100%;
-	margin-bottom: 0;
+  max-width: 100%;
+  margin-bottom: 0;
 }
 
 .santa-hat-overlay {
-	position: absolute;
-	left: 50%;
-	pointer-events: none;
-	z-index: 10;
-	--hat-rotation: -15deg;
-	animation: hatWiggle 3s ease-in-out infinite;
-	/* Size, position, and rotation set via JavaScript from theme config */
+  position: absolute;
+  left: 50%;
+  pointer-events: none;
+  z-index: 10;
+  --hat-rotation: -15deg;
+  animation: hatWiggle 3s ease-in-out infinite;
+  /* Size, position, and rotation set via JavaScript from theme config */
 }
 
 @keyframes hatWiggle {
-	0%, 100% { transform: rotate(var(--hat-rotation)); }
-	50% { transform: rotate(calc(var(--hat-rotation) - 5deg)); }
+  0%,
+  100% {
+    transform: rotate(var(--hat-rotation));
+  }
+  50% {
+    transform: rotate(calc(var(--hat-rotation) - 5deg));
+  }
 }
 
 .snowflakes {
-	position: absolute;
-	top: 0;
-	left: 50%;
-	transform: translateX(calc(-50% - 5px));
-	width: 120%;
-	height: 150%;
-	pointer-events: none;
-	overflow: visible;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(calc(-50% - 5px));
+  width: 120%;
+  height: 150%;
+  pointer-events: none;
+  overflow: visible;
 }
 
 .snowflake {
-	position: absolute;
-	top: -10px;
-	color: #ffffff;
-	font-size: 20px;
-	opacity: 0.8;
-	animation: snowfall 5s linear infinite;
-	text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+  position: absolute;
+  top: -10px;
+  color: #ffffff;
+  font-size: 20px;
+  opacity: 0.8;
+  animation: snowfall 5s linear infinite;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
 }
 
 @keyframes snowfall {
-	0% {
-		transform: translateY(0) rotate(0deg);
-		opacity: 0.8;
-	}
-	100% {
-		transform: translateY(400px) rotate(360deg);
-		opacity: 0;
-	}
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(400px) rotate(360deg);
+    opacity: 0;
+  }
 }
 
 /* Koningsdag theme decorations */
 .crown-overlay {
-	position: absolute;
-	left: 50%;
-	pointer-events: none;
-	z-index: 10;
-	--crown-rotation: 0deg;
-	animation: crownBounce 2s ease-in-out infinite;
-	/* Size, position, and rotation set via JavaScript from theme config */
+  position: absolute;
+  left: 50%;
+  pointer-events: none;
+  z-index: 10;
+  --crown-rotation: 0deg;
+  animation: crownBounce 2s ease-in-out infinite;
+  /* Size, position, and rotation set via JavaScript from theme config */
 }
 
 @keyframes crownBounce {
-	0%, 100% { transform: rotate(var(--crown-rotation)); }
-	50% { transform: rotate(var(--crown-rotation)) translateY(-5px); }
+  0%,
+  100% {
+    transform: rotate(var(--crown-rotation));
+  }
+  50% {
+    transform: rotate(var(--crown-rotation)) translateY(-5px);
+  }
 }
 
 .dutch-flags {
-	position: absolute;
-	top: 0;
-	left: 50%;
-	transform: translateX(calc(-50% - 5px));
-	width: 120%;
-	height: 150%;
-	pointer-events: none;
-	overflow: visible;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(calc(-50% - 5px));
+  width: 120%;
+  height: 150%;
+  pointer-events: none;
+  overflow: visible;
 }
 
 .dutch-flag {
-	position: absolute;
-	top: -10px;
-	opacity: 0.8;
-	animation: flagfall 5s linear infinite;
+  position: absolute;
+  top: -10px;
+  opacity: 0.8;
+  animation: flagfall 5s linear infinite;
 }
 
 @keyframes flagfall {
-	0% {
-		transform: translateY(0) rotate(0deg);
-		opacity: 0.8;
-	}
-	100% {
-		transform: translateY(400px) rotate(360deg);
-		opacity: 0;
-	}
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(400px) rotate(360deg);
+    opacity: 0;
+  }
 }
 
 /* Accessibility: Respect user's motion preferences */
 @media (prefers-reduced-motion: reduce) {
-	.santa-hat-overlay {
-		animation: none;
-		transform: rotate(-15deg);
-	}
+  .santa-hat-overlay {
+    animation: none;
+    transform: rotate(-15deg);
+  }
 
-	.snowflake {
-		animation: none;
-		opacity: 0.3;
-	}
+  .snowflake {
+    animation: none;
+    opacity: 0.3;
+  }
 
-	.crown-overlay {
-		animation: none;
-		transform: rotate(var(--crown-rotation));
-	}
+  .crown-overlay {
+    animation: none;
+    transform: rotate(var(--crown-rotation));
+  }
 
-	.dutch-flag {
-		animation: none;
-		opacity: 0.3;
-	}
+  .dutch-flag {
+    animation: none;
+    opacity: 0.3;
+  }
 }
 
 h1 {
-	margin-bottom: 20px;
+  margin-bottom: 20px;
 }
 
 button {
-	padding: 10px 20px;
-	font-size: 18px;
-	border-radius: 5px;
-	border: none;
-	background-color: var(--primary-action);
-	color: var(--text-primary);
-	cursor: pointer;
+  padding: 10px 20px;
+  font-size: 18px;
+  border-radius: 5px;
+  border: none;
+  background-color: var(--primary-action);
+  color: var(--text-primary);
+  cursor: pointer;
 }
 
 button:hover {
-	background-color: var(--primary-hover);
+  background-color: var(--primary-hover);
 }
-

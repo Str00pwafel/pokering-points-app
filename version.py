@@ -1,6 +1,13 @@
-__version__ = "1.4.4"
+__version__ = "1.4.5"
 
 __changelog__ = {
+    "1.4.5": [
+        "CI: GitHub Actions workflow runs ruff + black (Python) and prettier + eslint (JS) on every push/PR to main",
+        "Tooling: pyproject.toml with ruff (isort, bugbear, pyupgrade) + black (line-length 100)",
+        "Tooling: package.json with eslint flat config + prettier (dev-only, no build step)",
+        "Formatting: normalized all JS/CSS/HTML/MD via prettier (2-space indent, single quotes, trailing commas)",
+        "Formatting: normalized Python via black + ruff --fix (import sort, trailing newlines)",
+    ],
     "1.4.4": [
         "Correctness: late joiners at reveal state now receive revealVotes + user chips; cards disabled",
         "Reliability: graceful shutdown broadcasts serverShutdown event before closing sockets",

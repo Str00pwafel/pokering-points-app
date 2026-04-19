@@ -7,29 +7,31 @@ import logging.handlers
 import os
 import re
 import secrets
-import socketio
 import uuid
-import uvicorn
-
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI
-from fastapi import Request
+
+import socketio
+import uvicorn
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from version import __version__, __changelog__
+
+from version import __changelog__, __version__
 
 # Per-request trace ID, propagated through the logger via a filter.
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
+
 
 class RequestIdFilter(logging.Filter):
     def filter(self, record):
         if not hasattr(record, "request_id"):
             record.request_id = request_id_var.get()
         return True
+
 
 # Configure logging with file rotation
 LOG_DIR = os.getenv("LOG_DIR", "logs")
@@ -38,7 +40,7 @@ LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", 3))  # Keep 3 rotated files
 
 os.makedirs(LOG_DIR, exist_ok=True)
 
-log_format = '%(asctime)s - %(request_id)s - %(name)s - %(levelname)s - %(message)s'
+log_format = "%(asctime)s - %(request_id)s - %(name)s - %(levelname)s - %(message)s"
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -102,6 +104,7 @@ if _raw_whitelist:
             except ValueError:
                 logging.warning(f"Invalid RATE_LIMIT_WHITELIST entry ignored: {entry}")
 
+
 def is_ip_whitelisted(ip_str):
     """Check if IP matches any whitelisted network/address."""
     if not ip_str or not RATE_LIMIT_WHITELIST:
@@ -111,6 +114,7 @@ def is_ip_whitelisted(ip_str):
         return any(addr in net for net in RATE_LIMIT_WHITELIST)
     except ValueError:
         return False
+
 
 # Session storage and limits
 sessions = {}
@@ -132,6 +136,7 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
 SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{16}$")  # matches token_urlsafe(12) length
 CLIENT_ID_RE = re.compile(r"^[a-zA-Z0-9\-_]{7,36}$")
 
+
 def sanitize_username(raw):
     """Strip control chars, trim whitespace, return None if empty or invalid."""
     if not isinstance(raw, str):
@@ -140,6 +145,7 @@ def sanitize_username(raw):
     if not cleaned or not USERNAME_RE.fullmatch(cleaned):
         return None
     return cleaned
+
 
 # Deck presets (? is always valid as "unsure")
 DECK_PRESETS = {
@@ -166,6 +172,7 @@ task_last_run: dict = {
     "rate_limit_cleanup": None,
     "log_retention_cleanup": None,
 }
+
 
 # Session cleanup background task
 async def session_cleanup():
@@ -199,6 +206,7 @@ async def session_cleanup():
         if to_remove:
             logger.warning(f"Cleaned up {len(to_remove)} expired sessions")
 
+
 # IP detection helper (proxy-aware)
 def _pick_forwarded_hop(xff_value):
     """Pick the Nth-from-right hop of X-Forwarded-For per PROXY_DEPTH.
@@ -209,6 +217,7 @@ def _pick_forwarded_hop(xff_value):
     idx = max(0, len(hops) - PROXY_DEPTH)
     return hops[idx]
 
+
 def get_client_ip(request):
     """Get client IP, checking X-Forwarded-For when behind a trusted proxy."""
     if TRUST_PROXY:
@@ -218,6 +227,7 @@ def get_client_ip(request):
             if picked:
                 return picked
     return request.client.host if request.client else None
+
 
 def _bound_dict(d, max_entries=None):
     """Evict oldest entries (by insertion order) when dict exceeds cap."""
@@ -230,6 +240,7 @@ def _bound_dict(d, max_entries=None):
         except (StopIteration, KeyError):
             break
 
+
 # Socket.IO rate limiting helper
 def check_socket_rate_limit(sid, action, limit=30, window=60):
     """Check if socket action is rate limited. Whitelisted IPs skip limits."""
@@ -240,8 +251,7 @@ def check_socket_rate_limit(sid, action, limit=30, window=60):
 
     # Clean old entries for this socket/action
     socket_rate_limits[sid][action] = [
-        t for t in socket_rate_limits[sid][action]
-        if now - t < timedelta(seconds=window)
+        t for t in socket_rate_limits[sid][action] if now - t < timedelta(seconds=window)
     ]
 
     # Check limit
@@ -252,6 +262,7 @@ def check_socket_rate_limit(sid, action, limit=30, window=60):
     socket_rate_limits[sid][action].append(now)
     _bound_dict(socket_rate_limits)
     return True
+
 
 # Rate limit cleanup background task
 async def rate_limit_cleanup():
@@ -291,6 +302,7 @@ async def rate_limit_cleanup():
 # Set LOG_RETENTION_DAYS=0 to disable.
 LOG_RETENTION_CHECK_INTERVAL = timedelta(hours=6)
 
+
 async def log_retention_cleanup():
     if LOG_RETENTION_DAYS <= 0:
         return
@@ -314,9 +326,12 @@ async def log_retention_cleanup():
                     except OSError as e:
                         logger.warning(f"Failed to delete old log {entry}: {e}")
             if removed:
-                logger.info(f"Log retention: removed {removed} file(s) older than {LOG_RETENTION_DAYS}d")
+                logger.info(
+                    f"Log retention: removed {removed} file(s) older than {LOG_RETENTION_DAYS}d"
+                )
         except Exception as e:
             logger.error(f"Log retention cleanup failed: {e}")
+
 
 # Lifespan handler
 @asynccontextmanager
@@ -335,13 +350,12 @@ async def lifespan(app: FastAPI):
     rate_limit_task.cancel()
     log_retention_task.cancel()
 
+
 # Initialize FastAPI and Socket.IO
 # Socket.IO origin lock: wildcard "*" accepted as string by socketio; explicit list otherwise.
 _sio_cors = "*" if "*" in CORS_ORIGINS else CORS_ORIGINS
 sio = socketio.AsyncServer(
-    async_mode='asgi',
-    max_http_buffer_size=1_000_000,
-    cors_allowed_origins=_sio_cors
+    async_mode="asgi", max_http_buffer_size=1_000_000, cors_allowed_origins=_sio_cors
 )
 app = FastAPI(lifespan=lifespan, title="Pokering Points", version=__version__)
 
@@ -357,10 +371,12 @@ app.add_middleware(
     max_age=3600,
 )
 
+
 # Routes first
 @app.get("/", response_class=HTMLResponse)
 async def get_welcome():
     return FileResponse("public/welcome.html")
+
 
 @app.post("/create")
 async def create_session(request: Request):
@@ -369,18 +385,22 @@ async def create_session(request: Request):
         logger.warning(f"Session creation rejected: max limit reached ({MAX_ACTIVE_SESSIONS})")
         return HTMLResponse(
             content="<html><body><h1>Server Full</h1><p>Maximum number of active sessions reached. Please try again later.</p></body></html>",
-            status_code=503
+            status_code=503,
         )
 
     # Rate limiting based on IP
     client_ip = get_client_ip(request)
     now = datetime.now(timezone.utc)
 
-    if client_ip and not is_ip_whitelisted(client_ip) and now - last_create_time[client_ip] < CREATE_RATE_LIMIT:
+    if (
+        client_ip
+        and not is_ip_whitelisted(client_ip)
+        and now - last_create_time[client_ip] < CREATE_RATE_LIMIT
+    ):
         logger.warning(f"Rate limit exceeded for session creation: {client_ip}")
         return HTMLResponse(
             content="<html><body><h1>Too Many Requests</h1><p>Please wait before creating another session.</p></body></html>",
-            status_code=429
+            status_code=429,
         )
 
     if client_ip:
@@ -402,15 +422,17 @@ async def create_session(request: Request):
     # 303 See Other ensures browser issues GET to the session URL after POST /create
     return RedirectResponse(f"/session/{session_id}", status_code=303)
 
+
 @app.get("/session/{session_id}", response_class=HTMLResponse)
 async def get_session(session_id: str):
     # Validate session ID format to prevent path traversal or injection
     if not SESSION_ID_RE.fullmatch(session_id):
         return HTMLResponse(
             content="<html><body><h1>Invalid Session ID</h1><p>Session ID must be 16 alphanumeric characters.</p></body></html>",
-            status_code=400
+            status_code=400,
         )
     return FileResponse("public/index.html")
+
 
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
@@ -422,6 +444,7 @@ async def add_request_id(request: Request, call_next):
         request_id_var.reset(token)
     response.headers["X-Request-ID"] = rid
     return response
+
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -449,7 +472,7 @@ async def add_security_headers(request: Request, call_next):
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
-        "frame-ancestors 'none'"
+        "frame-ancestors 'none'",
     ]
     # Only add upgrade-insecure-requests in production (HTTPS)
     if request.url.scheme == "https":
@@ -461,6 +484,7 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
     return response
+
 
 def load_theme_config():
     """Load theme config with caching and file modification check"""
@@ -481,7 +505,7 @@ def load_theme_config():
             return theme_config
 
         # Load fresh config
-        with open(theme_file, "r") as f:
+        with open(theme_file) as f:
             config = json.load(f)
 
         # Cache config and mtime
@@ -494,6 +518,7 @@ def load_theme_config():
     except Exception as e:
         logger.error(f"Error loading theme config: {e}")
         return None
+
 
 _CHANGELOG_SHELL = """<!DOCTYPE html>
 <html lang="en">
@@ -514,6 +539,7 @@ _CHANGELOG_SHELL = """<!DOCTYPE html>
 </html>
 """
 
+
 @app.get("/changelog.html", response_class=HTMLResponse)
 async def get_changelog():
     """Server-rendered changelog. Source of truth: version.py __changelog__."""
@@ -523,9 +549,10 @@ async def get_changelog():
         items_html = "".join(f"<li>{html.escape(item)}</li>" for item in items)
         blocks.append(
             f'<div class="version-block"><h2>v{html.escape(v)}{tag}</h2>'
-            f'<ul>{items_html}</ul></div>'
+            f"<ul>{items_html}</ul></div>"
         )
     return HTMLResponse(content=_CHANGELOG_SHELL.format(body="\n".join(blocks)))
+
 
 @app.get("/version")
 async def get_version():
@@ -536,12 +563,14 @@ async def get_version():
         "changelog": changelog,
     }
 
+
 @app.get("/version/full")
 async def get_version_full():
     return {
         "version": __version__,
         "changelog": __changelog__,
     }
+
 
 @app.get("/theme")
 async def get_theme():
@@ -560,9 +589,9 @@ async def get_theme():
             "secondary-action": "#FF851B",
             "secondary-hover": "#cc6c16",
             "text-primary": "#ffffff",
-            "text-secondary": "#cccccc"
+            "text-secondary": "#cccccc",
         },
-        "logo": "beardcraft_v1.png"
+        "logo": "beardcraft_v1.png",
     }
 
     try:
@@ -595,7 +624,7 @@ async def get_theme():
         result = {
             "name": theme_data["name"],
             "colors": theme_data["colors"],
-            "logo": theme_data["logo"]
+            "logo": theme_data["logo"],
         }
 
         # Include decorations config if present
@@ -608,12 +637,14 @@ async def get_theme():
         logger.error(f"Error loading theme: {e}")
         return default_theme
 
+
 # Staleness threshold = 2x the task interval (plus a small buffer for the first-run window).
 _TASK_STALE_THRESHOLDS = {
     "session_cleanup": SESSION_CLEANUP_INTERVAL * 2,
     "rate_limit_cleanup": RATE_LIMIT_CLEANUP_INTERVAL * 2,
     "log_retention_cleanup": LOG_RETENTION_CHECK_INTERVAL * 2,
 }
+
 
 @app.get("/health")
 async def health_check():
@@ -647,14 +678,15 @@ async def health_check():
         "sessions": {
             "active": len(sessions),
             "max": MAX_ACTIVE_SESSIONS,
-            "usage_percent": round((len(sessions) / MAX_ACTIVE_SESSIONS) * 100, 2)
+            "usage_percent": round((len(sessions) / MAX_ACTIVE_SESSIONS) * 100, 2),
         },
         "rate_limits": {
             "tracked_ips_join": len(last_join_time),
-            "tracked_ips_create": len(last_create_time)
+            "tracked_ips_create": len(last_create_time),
         },
         "background_tasks": tasks_report,
     }
+
 
 @app.get("/metrics")
 async def metrics():
@@ -691,6 +723,7 @@ pokering_rate_limit_ips_create {len(last_create_time)}
 """
     return HTMLResponse(content=metrics_text, media_type="text/plain")
 
+
 app.mount("/", StaticFiles(directory="public"), name="static")
 
 # Combine FastAPI and Socket.IO
@@ -698,6 +731,7 @@ asgi_app = socketio.ASGIApp(sio, app)
 
 # Track socket-to-IP mapping for whitelist lookups
 socket_ip_map = {}
+
 
 # Socket.IO handlers
 @sio.event
@@ -718,7 +752,9 @@ async def connect(sid, environ):
         socket_ip_map[sid] = ip_addr
         _bound_dict(socket_ip_map)
 
+
 RECONNECT_GRACE = 2  # seconds — delay leave broadcasts to tolerate brief disconnects
+
 
 async def _delayed_leave(session_id, client_id, username, was_host):
     await asyncio.sleep(RECONNECT_GRACE)
@@ -729,9 +765,10 @@ async def _delayed_leave(session_id, client_id, username, was_host):
     if any(u.get("clientId") == client_id for u in session["users"].values()):
         return
     if was_host:
-        await sio.emit('hostLeft', room=session_id)
+        await sio.emit("hostLeft", room=session_id)
     else:
-        await sio.emit('userLeft', {'username': username}, room=session_id)
+        await sio.emit("userLeft", {"username": username}, room=session_id)
+
 
 @sio.event
 async def disconnect(sid):
@@ -746,8 +783,9 @@ async def disconnect(sid):
             logger.info(f"User disconnected: {username} from session {session_id}")
             if client_id:
                 asyncio.create_task(_delayed_leave(session_id, client_id, username, was_host))
-            await sio.emit('usersUpdate', sessions[session_id]["users"], room=session_id)
+            await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
             break
+
 
 @sio.event
 async def join(sid, data):
@@ -782,7 +820,11 @@ async def join(sid, data):
 
     now = datetime.now(timezone.utc)
 
-    if ip_addr and not is_ip_whitelisted(ip_addr) and now - last_join_time[ip_addr] < JOIN_RATE_LIMIT:
+    if (
+        ip_addr
+        and not is_ip_whitelisted(ip_addr)
+        and now - last_join_time[ip_addr] < JOIN_RATE_LIMIT
+    ):
         await sio.emit("joinFailed", {"reason": "Too many join attempts. Please wait."}, room=sid)
         return
 
@@ -802,7 +844,11 @@ async def join(sid, data):
 
     username = sanitize_username(username)
     if username is None:
-        await sio.emit("joinFailed", {"reason": "Invalid username (letters, digits, spaces; max 30)."}, room=sid)
+        await sio.emit(
+            "joinFailed",
+            {"reason": "Invalid username (letters, digits, spaces; max 30)."},
+            room=sid,
+        )
         return
 
     if sessions[session_id]["hostClientId"] is None:
@@ -828,13 +874,15 @@ async def join(sid, data):
     if old_sid:
         sessions[session_id]["users"].pop(old_sid, None)
         socket_ip_map.pop(old_sid, None)
-        logger.info(f"Reconnect: clientId {client_id[:12]} replacing old sid in session {session_id}")
+        logger.info(
+            f"Reconnect: clientId {client_id[:12]} replacing old sid in session {session_id}"
+        )
 
     user_data = {
         "username": username,
         "vote": preserved_vote,
         "isHost": is_host,
-        "clientId": client_id
+        "clientId": client_id,
     }
 
     if preserved_wants_to_vote is not None:
@@ -854,7 +902,11 @@ async def join(sid, data):
     await sio.emit("deckChanged", {"deckType": session_deck_type}, room=sid)
 
     await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
-    await sio.emit("sessionState", {"votingEnabled": sessions[session_id].get("votingEnabled", True)}, room=session_id)
+    await sio.emit(
+        "sessionState",
+        {"votingEnabled": sessions[session_id].get("votingEnabled", True)},
+        room=session_id,
+    )
 
     # Sync countdown for mid-countdown joiners so they see remaining time
     if sessions[session_id].get("countdownActive"):
@@ -867,16 +919,21 @@ async def join(sid, data):
     # Sync reveal state for late joiners so cards are disabled and results render.
     # Skip during countdown — stats not yet computed; room-wide revealVotes fires soon.
     if sessions[session_id].get("revealed") and not sessions[session_id].get("countdownActive"):
-        await sio.emit("revealVotes", {
-            "users": sessions[session_id]["users"],
-            "stats": sessions[session_id].get("voteStats", {})
-        }, room=sid)
+        await sio.emit(
+            "revealVotes",
+            {
+                "users": sessions[session_id]["users"],
+                "stats": sessions[session_id].get("voteStats", {}),
+            },
+            room=sid,
+        )
         # Re-emit usersUpdate to this sid so vote chips render (client needs votesRevealed=true first)
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=sid)
 
     # Broadcast join notification only for fresh joins (not reconnects)
     if not old_sid:
         await sio.emit("userJoined", {"username": username, "clientId": client_id}, room=session_id)
+
 
 @sio.event
 async def vote(sid, data):
@@ -913,7 +970,8 @@ async def vote(sid, data):
         user["vote"] = value
 
         users = [
-            u for u in sessions[session_id]["users"].values()
+            u
+            for u in sessions[session_id]["users"].values()
             if not (u.get("isHost") and u.get("wantsToVote") is False)
         ]
 
@@ -927,6 +985,7 @@ async def vote(sid, data):
             sessions[session_id]["countdownActive"] = True
             sessions[session_id]["countdownStartedAt"] = datetime.now(timezone.utc)
             count = 3
+
             async def countdown():
                 nonlocal count
                 while count >= 0:
@@ -971,7 +1030,8 @@ async def vote(sid, data):
 
                     STEP_THRESHOLD = 2
                     vote_stats["outliers"] = [
-                        name for (name, v) in voted
+                        name
+                        for (name, v) in voted
                         if abs(index_of[v] - median_idx) >= STEP_THRESHOLD
                     ]
 
@@ -979,19 +1039,23 @@ async def vote(sid, data):
                     return
                 session["countdownActive"] = False
                 session["voteStats"] = vote_stats
-                await sio.emit("revealVotes", {
-                    "users": session["users"],
-                    "stats": vote_stats
-                }, room=session_id)
+                await sio.emit(
+                    "revealVotes", {"users": session["users"], "stats": vote_stats}, room=session_id
+                )
 
             sessions[session_id]["countdownTask"] = asyncio.create_task(countdown())
+
 
 @sio.event
 async def requestNewRound(sid, data):
     # Rate limiting: 30 new rounds per hour
     if not check_socket_rate_limit(sid, "requestNewRound", limit=30, window=3600):
         logger.warning(f"New round rate limit exceeded for socket {sid}")
-        await sio.emit("actionFailed", {"action": "newRound", "reason": "Too many new round requests"}, room=sid)
+        await sio.emit(
+            "actionFailed",
+            {"action": "newRound", "reason": "Too many new round requests"},
+            room=sid,
+        )
         return
 
     # Validate data structure
@@ -1011,7 +1075,11 @@ async def requestNewRound(sid, data):
 
     user = old_session["users"].get(sid)
     if not user or not user.get("isHost"):
-        await sio.emit("actionFailed", {"action": "newRound", "reason": "Only host can request new round"}, room=sid)
+        await sio.emit(
+            "actionFailed",
+            {"action": "newRound", "reason": "Only host can request new round"},
+            room=sid,
+        )
         return
 
     # Block during countdown (revealed still False but countdown task running)
@@ -1047,10 +1115,15 @@ async def requestNewRound(sid, data):
     old_session["votingEnabled"] = new_voting_enabled
     old_session["lastActivity"] = datetime.now(timezone.utc)
 
-    logger.info(f"New round in session {session_id} by host {user.get('username', 'unknown')} (deck: {deck_type}, {votes_cleared} votes cleared)")
+    logger.info(
+        f"New round in session {session_id} by host {user.get('username', 'unknown')} (deck: {deck_type}, {votes_cleared} votes cleared)"
+    )
 
-    await sio.emit("roundReset", {"deckType": deck_type, "votingEnabled": new_voting_enabled}, room=session_id)
+    await sio.emit(
+        "roundReset", {"deckType": deck_type, "votingEnabled": new_voting_enabled}, room=session_id
+    )
     await sio.emit("usersUpdate", old_session["users"], room=session_id)
+
 
 @sio.event
 async def changeDeck(sid, data):
@@ -1093,6 +1166,7 @@ async def changeDeck(sid, data):
 
     await sio.emit("deckChanged", {"deckType": deck_type}, room=session_id)
 
+
 @sio.event
 async def hostVotingDecision(sid, data):
     # Rate limiting: 10 voting decisions per minute
@@ -1122,6 +1196,7 @@ async def hostVotingDecision(sid, data):
         user["wantsToVote"] = wants_to_vote
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
 
+
 @sio.event
 async def setVotingEnabled(sid, data):
     if not check_socket_rate_limit(sid, "setVotingEnabled", limit=20, window=60):
@@ -1146,13 +1221,17 @@ async def setVotingEnabled(sid, data):
 
     user = session["users"].get(sid)
     if not user or not user.get("isHost"):
-        logger.warning(f"setVotingEnabled rejected: non-host attempt in session {session_id} sid={sid}")
+        logger.warning(
+            f"setVotingEnabled rejected: non-host attempt in session {session_id} sid={sid}"
+        )
         return
 
     # Only allow when no votes cast
     has_votes = any(u["vote"] is not None for u in session["users"].values())
     if has_votes:
-        logger.warning(f"setVotingEnabled rejected: votes already cast in session {session_id} by host {user.get('username', 'unknown')}")
+        logger.warning(
+            f"setVotingEnabled rejected: votes already cast in session {session_id} by host {user.get('username', 'unknown')}"
+        )
         return
 
     session["votingEnabled"] = voting_enabled
@@ -1161,13 +1240,9 @@ async def setVotingEnabled(sid, data):
 
     await sio.emit("sessionState", {"votingEnabled": voting_enabled}, room=session_id)
 
+
 # Start server
 if __name__ == "__main__":
     # Only enable reload in development
     reload_enabled = ENVIRONMENT == "development"
-    uvicorn.run(
-        "server:asgi_app",
-        host=SERVER_HOST,
-        port=SERVER_PORT,
-        reload=reload_enabled
-    )
+    uvicorn.run("server:asgi_app", host=SERVER_HOST, port=SERVER_PORT, reload=reload_enabled)

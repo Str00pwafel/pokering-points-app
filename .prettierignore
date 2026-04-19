@@ -1,0 +1,5 @@
+public/javascript/vendor/
+logs/
+.env/
+venv/
+node_modules/

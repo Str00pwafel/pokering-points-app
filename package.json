@@ -1,0 +1,18 @@
+{
+  "name": "pokering-points-app",
+  "private": true,
+  "type": "module",
+  "description": "Planning poker — dev tooling only (no build step)",
+  "scripts": {
+    "lint": "eslint public/javascript",
+    "lint:fix": "eslint public/javascript --fix",
+    "format": "prettier --check \"public/**/*.{js,css,html}\" \"*.md\"",
+    "format:fix": "prettier --write \"public/**/*.{js,css,html}\" \"*.md\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2"
+  }
+}

@@ -26,11 +26,15 @@ function showToast(message, type = 'info', duration = 3000) {
 
 window.addEventListener('error', (e) => {
   console.error('Uncaught error:', e.error || e.message);
-  try { showToast('Something went wrong. Refresh if issues persist.', 'error', 4000); } catch {}
+  try {
+    showToast('Something went wrong. Refresh if issues persist.', 'error', 4000);
+  } catch {}
 });
 window.addEventListener('unhandledrejection', (e) => {
   console.error('Unhandled promise rejection:', e.reason);
-  try { showToast('Something went wrong. Refresh if issues persist.', 'error', 4000); } catch {}
+  try {
+    showToast('Something went wrong. Refresh if issues persist.', 'error', 4000);
+  } catch {}
 });
 
 function updateConnectionIndicator() {
@@ -55,7 +59,7 @@ function rejoinSession() {
     username,
     clientId,
     deckType: currentDeckType,
-    wantsToVote: hostVoteDecision !== null ? (hostVoteDecision === "true") : undefined
+    wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
   });
 }
 
@@ -82,12 +86,17 @@ if (!sessionId || sessionId === 'session' || sessionId === 'undefined') {
   postCreate();
 }
 
-let username = sessionStorage.getItem("jiraPokerUsername") || localStorage.getItem("jiraPokerUsername") || "";
+let username =
+  sessionStorage.getItem('jiraPokerUsername') || localStorage.getItem('jiraPokerUsername') || '';
 let clientId = sessionStorage.getItem('jiraPokerClientId');
 if (!clientId) {
   const bytes = new Uint8Array(7);
   crypto.getRandomValues(bytes);
-  clientId = 'client-' + Array.from(bytes, b => b.toString(36).padStart(2, '0')).join('').slice(0, 7);
+  clientId =
+    'client-' +
+    Array.from(bytes, (b) => b.toString(36).padStart(2, '0'))
+      .join('')
+      .slice(0, 7);
   sessionStorage.setItem('jiraPokerClientId', clientId);
 }
 
@@ -101,7 +110,7 @@ async function updateVersionBadge() {
     const tooltip = document.getElementById('versionTooltip');
     if (tooltip && changelog) {
       tooltip.innerHTML = Object.entries(changelog)
-        .map(([v, items]) => `<h4>v${v}</h4><ul>${items.map(c => `<li>${c}</li>`).join('')}</ul>`)
+        .map(([v, items]) => `<h4>v${v}</h4><ul>${items.map((c) => `<li>${c}</li>`).join('')}</ul>`)
         .join('');
     }
   } catch (err) {
@@ -112,36 +121,43 @@ async function updateVersionBadge() {
 let selectedCard = null;
 
 function promptUsername() {
-  showModal("Enter your name to join the session:", () => {
-    const name = document.getElementById('modalInput').value.trim();
-    const errorEl = document.getElementById('modalError');
+  showModal(
+    'Enter your name to join the session:',
+    () => {
+      const name = document.getElementById('modalInput').value.trim();
+      const errorEl = document.getElementById('modalError');
 
-    if (!isValidUsername(name)) {
-      errorEl.textContent = "Name must be letters only (max 20 characters).";
-      return;
-    }
+      if (!isValidUsername(name)) {
+        errorEl.textContent = 'Name must be letters only (max 20 characters).';
+        return;
+      }
 
-    errorEl.textContent = "";
-    username = name.slice(0, 20);
-    sessionStorage.setItem("jiraPokerUsername", username);
-    localStorage.setItem("jiraPokerUsername", username);
-    document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
-    document.getElementById('mainContent').classList.remove('hidden');
+      errorEl.textContent = '';
+      username = name.slice(0, 20);
+      sessionStorage.setItem('jiraPokerUsername', username);
+      localStorage.setItem('jiraPokerUsername', username);
+      document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
+      document.getElementById('mainContent').classList.remove('hidden');
 
-    const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
-    socket.emit('join', {
-      sessionId,
-      username,
-      clientId,
-      deckType: currentDeckType,
-      wantsToVote: hostVoteDecision !== null ? (hostVoteDecision === "true") : undefined
-    });
-  }, true, false, true, username);
+      const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
+      socket.emit('join', {
+        sessionId,
+        username,
+        clientId,
+        deckType: currentDeckType,
+        wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
+      });
+    },
+    true,
+    false,
+    true,
+    username
+  );
 }
 
 window.addEventListener('load', () => {
   // If username is in sessionStorage, this is a redirect (new round) - join directly
-  const sessionUsername = sessionStorage.getItem("jiraPokerUsername");
+  const sessionUsername = sessionStorage.getItem('jiraPokerUsername');
   if (sessionUsername && isValidUsername(sessionUsername)) {
     username = sessionUsername;
     const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
@@ -153,7 +169,7 @@ window.addEventListener('load', () => {
       username,
       clientId,
       deckType: currentDeckType,
-      wantsToVote: hostVoteDecision !== null ? (hostVoteDecision === "true") : undefined
+      wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
     });
   } else {
     promptUsername();
@@ -178,19 +194,19 @@ window.addEventListener('load', () => {
 });
 
 const DECK_PRESETS = {
-  fibonacci: [1, 2, 3, 5, 8, 13, 21, "?"],
-  hours: [1, 2, 4, 8, 16, 24, 40, "?"],
-  tshirt: ["XS", "S", "M", "L", "XL", "XXL", "?"]
+  fibonacci: [1, 2, 3, 5, 8, 13, 21, '?'],
+  hours: [1, 2, 4, 8, 16, 24, 40, '?'],
+  tshirt: ['XS', 'S', 'M', 'L', 'XL', 'XXL', '?'],
 };
 
 const DECK_LABELS = {
-  fibonacci: "Fibonacci (1-21)",
-  hours: "Hours (1-40)",
-  tshirt: "T-Shirt (XS-XXL)",
+  fibonacci: 'Fibonacci (1-21)',
+  hours: 'Hours (1-40)',
+  tshirt: 'T-Shirt (XS-XXL)',
 };
 
-let currentDeckType = sessionStorage.getItem("jiraPokerDeckType") || "fibonacci";
-if (!DECK_PRESETS[currentDeckType]) currentDeckType = "fibonacci";
+let currentDeckType = sessionStorage.getItem('jiraPokerDeckType') || 'fibonacci';
+if (!DECK_PRESETS[currentDeckType]) currentDeckType = 'fibonacci';
 let cardValues = DECK_PRESETS[currentDeckType];
 let votingEnabled = true;
 let votesRevealed = false;
@@ -201,7 +217,7 @@ const cardContainer = document.getElementById('cardOptions');
 function renderCards() {
   cardContainer.innerHTML = '';
   selectedCard = null;
-  cardValues.forEach(value => {
+  cardValues.forEach((value) => {
     const card = document.createElement('div');
     card.classList.add('card');
     card.dataset.value = value;
@@ -242,7 +258,7 @@ function selectCard(element, value) {
   element.classList.add('selected');
 
   const allCards = document.querySelectorAll('.card');
-  allCards.forEach(card => {
+  allCards.forEach((card) => {
     card.classList.add('disabled');
     card.style.pointerEvents = 'none';
     card.style.opacity = '0.5';
@@ -265,12 +281,15 @@ function startNewRound() {
 
 function copyLink() {
   const url = `${window.location.origin}/session/${sessionId}`;
-  navigator.clipboard.writeText(url).then(() => {
-    showToast('Session link copied to clipboard', 'success');
-  }).catch(err => {
-    console.error('Failed to copy:', err);
-    showToast('Failed to copy session link', 'error');
-  });
+  navigator.clipboard
+    .writeText(url)
+    .then(() => {
+      showToast('Session link copied to clipboard', 'success');
+    })
+    .catch((err) => {
+      console.error('Failed to copy:', err);
+      showToast('Failed to copy session link', 'error');
+    });
 }
 
 socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
@@ -280,7 +299,7 @@ socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
   const votingChanged = votingEnabled !== enabled;
   votingEnabled = enabled;
 
-  document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('.card').forEach((c) => c.classList.remove('selected'));
   document.getElementById('countdown').innerText = '';
   document.getElementById('votesDisplay').innerHTML = '';
   document.getElementById('voteSummary').innerHTML = '';
@@ -310,9 +329,9 @@ function ensureConnectionIndicator() {
   updateConnectionIndicator();
 }
 
-socket.on('usersUpdate', users => {
+socket.on('usersUpdate', (users) => {
   ensureConnectionIndicator();
-  const myUser = Object.values(users).find(u => u.clientId === clientId);
+  const myUser = Object.values(users).find((u) => u.clientId === clientId);
   const isHost = myUser?.isHost;
 
   document.getElementById('newRoundBtn').style.display = isHost ? 'inline-block' : 'none';
@@ -323,7 +342,7 @@ socket.on('usersUpdate', users => {
 
   // Grey out deck selector if votes have been cast
   if (isHost) {
-    const hasVotes = Object.values(users).some(u => u.vote !== null);
+    const hasVotes = Object.values(users).some((u) => u.vote !== null);
     document.getElementById('deckSelector').disabled = hasVotes || votesRevealed;
     toggleBtn.disabled = hasVotes && !votesRevealed;
     updateToggleBtnLabel();
@@ -340,8 +359,8 @@ socket.on('usersUpdate', users => {
   }
 
   const userList = Object.values(users);
-  const votingUsers = userList.filter(u => !(u.isHost && u.wantsToVote === false));
-  const selected = votingUsers.filter(u => u.vote !== null).length;
+  const votingUsers = userList.filter((u) => !(u.isHost && u.wantsToVote === false));
+  const selected = votingUsers.filter((u) => u.vote !== null).length;
   document.getElementById('status').innerText = `${selected} of ${votingUsers.length} selected`;
 
   const userCountEl = document.getElementById('userCount');
@@ -353,7 +372,7 @@ socket.on('usersUpdate', users => {
   if (userListContent) {
     userListContent.innerHTML = '';
 
-    userList.forEach(user => {
+    userList.forEach((user) => {
       const isSpectator = user.isHost && user.wantsToVote === false;
       const hasVoted = user.vote !== null;
 
@@ -368,7 +387,7 @@ socket.on('usersUpdate', users => {
       if (isSpectator) status.textContent = '👁';
       else if (hasVoted) status.textContent = '✓';
       else status.textContent = '⋯';
-      status.title = isSpectator ? 'Spectating' : (hasVoted ? 'Voted' : 'Waiting');
+      status.title = isSpectator ? 'Spectating' : hasVoted ? 'Voted' : 'Waiting';
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'user-name';
@@ -399,7 +418,7 @@ socket.on('usersUpdate', users => {
   }
 });
 
-socket.on('countdown', seconds => {
+socket.on('countdown', (seconds) => {
   document.getElementById('countdown').innerText = `Revealing in: ${seconds}`;
   document.getElementById('toggleVotingBtn').disabled = true;
   document.getElementById('newRoundBtn').disabled = true;
@@ -414,17 +433,19 @@ socket.on('revealVotes', ({ users, stats }) => {
   toggleBtn.disabled = false;
   document.getElementById('newRoundBtn').disabled = false;
   document.getElementById('newSessionBtn').disabled = false;
-  document.getElementById('countdown').innerText = "";
+  document.getElementById('countdown').innerText = '';
 
   // Disable all cards once revealed (covers late joiners whose cards were still live)
-  document.querySelectorAll('.card').forEach(c => {
+  document.querySelectorAll('.card').forEach((c) => {
     c.classList.add('disabled');
     c.style.pointerEvents = 'none';
     c.style.opacity = '0.5';
   });
 
   // Filter out users with null vote (late joiners joining at reveal state)
-  const votingUsers = Object.values(users).filter(u => u.vote !== null && !(u.isHost && u.wantsToVote === false));
+  const votingUsers = Object.values(users).filter(
+    (u) => u.vote !== null && !(u.isHost && u.wantsToVote === false)
+  );
 
   const results = votingUsers
     .map((u, i) => {
@@ -442,24 +463,34 @@ socket.on('revealVotes', ({ users, stats }) => {
     })
     .join('');
 
-  const realVotesForStats = votingUsers.map(u => u.vote).filter(v => v !== null && v !== '?');
+  const realVotesForStats = votingUsers.map((u) => u.vote).filter((v) => v !== null && v !== '?');
   const uniqueVotes = new Set(realVotesForStats).size;
   const allAgreed = realVotesForStats.length >= 2 && uniqueVotes === 1;
 
   const statTiles = [];
   if (stats?.average !== undefined) {
-    statTiles.push(`<div class="stat-tile"><span class="stat-label">Average</span><span class="stat-value">${stats.average}</span></div>`);
+    statTiles.push(
+      `<div class="stat-tile"><span class="stat-label">Average</span><span class="stat-value">${stats.average}</span></div>`
+    );
   }
   if (stats?.median !== undefined) {
-    statTiles.push(`<div class="stat-tile"><span class="stat-label">Median</span><span class="stat-value">${escapeHTML(String(stats.median))}</span></div>`);
+    statTiles.push(
+      `<div class="stat-tile"><span class="stat-label">Median</span><span class="stat-value">${escapeHTML(String(stats.median))}</span></div>`
+    );
   }
   if (realVotesForStats.length > 0) {
-    statTiles.push(`<div class="stat-tile"><span class="stat-label">Votes</span><span class="stat-value">${realVotesForStats.length}</span></div>`);
+    statTiles.push(
+      `<div class="stat-tile"><span class="stat-label">Votes</span><span class="stat-value">${realVotesForStats.length}</span></div>`
+    );
   }
   if (allAgreed) {
-    statTiles.push(`<div class="stat-tile consensus"><span class="stat-label">Consensus</span><span class="stat-value">🎉</span></div>`);
+    statTiles.push(
+      `<div class="stat-tile consensus"><span class="stat-label">Consensus</span><span class="stat-value">🎉</span></div>`
+    );
   } else if (stats?.outliers?.length) {
-    statTiles.push(`<div class="stat-tile outlier"><span class="stat-label">Outliers</span><span class="stat-value">${stats.outliers.length}</span></div>`);
+    statTiles.push(
+      `<div class="stat-tile outlier"><span class="stat-label">Outliers</span><span class="stat-value">${stats.outliers.length}</span></div>`
+    );
   }
   const summary = statTiles.length ? `<div class="stat-row">${statTiles.join('')}</div>` : '';
 
@@ -467,8 +498,8 @@ socket.on('revealVotes', ({ users, stats }) => {
   document.getElementById('voteSummary').innerHTML = summary;
 
   // Consensus detection: all non-"?" votes identical, at least 2 voters
-  const realVotes = votingUsers.map(u => u.vote).filter(v => v !== null && v !== '?');
-  if (realVotes.length >= 2 && realVotes.every(v => v === realVotes[0])) {
+  const realVotes = votingUsers.map((u) => u.vote).filter((v) => v !== null && v !== '?');
+  if (realVotes.length >= 2 && realVotes.every((v) => v === realVotes[0])) {
     const totalDelay = votingUsers.length * 80 + 500;
     setTimeout(() => launchConfetti(), totalDelay);
   }
@@ -487,10 +518,10 @@ function launchConfetti() {
     piece.className = 'confetti-piece';
     piece.style.left = Math.random() * 100 + '%';
     piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-    piece.style.animationDuration = (2 + Math.random() * 2) + 's';
+    piece.style.animationDuration = 2 + Math.random() * 2 + 's';
     piece.style.animationDelay = Math.random() * 0.5 + 's';
-    piece.style.width = (6 + Math.random() * 6) + 'px';
-    piece.style.height = (10 + Math.random() * 8) + 'px';
+    piece.style.width = 6 + Math.random() * 6 + 'px';
+    piece.style.height = 10 + Math.random() * 8 + 'px';
     piece.style.transform = `rotate(${Math.random() * 360}deg)`;
     container.appendChild(piece);
   }
@@ -526,7 +557,14 @@ socket.on('serverShutdown', ({ reason } = {}) => {
   showToast(reason || 'Server is restarting. Reconnecting...', 'info', 5000);
 });
 
-function showModal(message, onConfirm, withInput = false, yesNoMode = false, hideCancel = false, prefill = '') {
+function showModal(
+  message,
+  onConfirm,
+  withInput = false,
+  yesNoMode = false,
+  hideCancel = false,
+  prefill = ''
+) {
   const backdrop = document.getElementById('modalBackdrop');
   const messageEl = document.getElementById('modalMessage');
   const confirmBtn = document.getElementById('modalConfirm');
@@ -536,15 +574,15 @@ function showModal(message, onConfirm, withInput = false, yesNoMode = false, hid
   messageEl.innerHTML = withInput
     ? `${message}<br><input type="text" id="modalInput" maxlength="20" value="${prefill}">`
     : message;
-  errorEl.textContent = "";
+  errorEl.textContent = '';
   cancelBtn.style.display = hideCancel ? 'none' : '';
 
   if (yesNoMode) {
-    confirmBtn.textContent = "Yes";
-    cancelBtn.textContent = "No";
+    confirmBtn.textContent = 'Yes';
+    cancelBtn.textContent = 'No';
   } else {
-    confirmBtn.textContent = "Confirm";
-    cancelBtn.textContent = "Cancel";
+    confirmBtn.textContent = 'Confirm';
+    cancelBtn.textContent = 'Cancel';
   }
 
   backdrop.classList.remove('hidden');
@@ -561,12 +599,12 @@ function showModal(message, onConfirm, withInput = false, yesNoMode = false, hid
     if (withInput) {
       const inputEl = document.getElementById('modalInput');
       if (!inputEl || !isValidUsername(inputEl.value.trim())) {
-        errorEl.textContent = "Name must be letters only (max 20 characters).";
+        errorEl.textContent = 'Name must be letters only (max 20 characters).';
         return;
       }
     }
 
-    errorEl.textContent = "";
+    errorEl.textContent = '';
     if (onConfirm) {
       if (yesNoMode) {
         onConfirm(true);
@@ -598,7 +636,8 @@ socket.on('sessionState', ({ votingEnabled: enabled }) => {
 });
 
 socket.on('connect', () => {
-  const wasDisconnected = connectionStatus === 'disconnected' || connectionStatus === 'reconnecting';
+  const wasDisconnected =
+    connectionStatus === 'disconnected' || connectionStatus === 'reconnecting';
   connectionStatus = 'connected';
   updateConnectionIndicator();
   if (wasDisconnected) {
@@ -624,10 +663,10 @@ function updateVotingLockState() {
   const cards = document.querySelectorAll('.card');
   if (!votingEnabled) {
     lockEl.classList.remove('hidden');
-    cards.forEach(c => c.classList.add('voting-locked'));
+    cards.forEach((c) => c.classList.add('voting-locked'));
   } else {
     lockEl.classList.add('hidden');
-    cards.forEach(c => c.classList.remove('voting-locked'));
+    cards.forEach((c) => c.classList.remove('voting-locked'));
   }
   updateToggleBtnLabel();
 }
@@ -668,13 +707,13 @@ function confirmHostSettings() {
 document.getElementById('newSessionBtn').addEventListener('click', (e) => {
   e.preventDefault();
   showModal(
-    "Start a new session?<br><br>" +
-    "This will create a fresh session.<br>" +
-    "Currently connected users will <span style='color:red;font-weight:bold;'>NOT</span> be moved.",
+    'Start a new session?<br><br>' +
+      'This will create a fresh session.<br>' +
+      "Currently connected users will <span style='color:red;font-weight:bold;'>NOT</span> be moved.",
     () => {
       Object.keys(sessionStorage)
-        .filter(k => k.startsWith('jiraPokerHostVoteDecision_'))
-        .forEach(k => sessionStorage.removeItem(k));
+        .filter((k) => k.startsWith('jiraPokerHostVoteDecision_'))
+        .forEach((k) => sessionStorage.removeItem(k));
       postCreate();
     }
   );

@@ -49,7 +49,7 @@ h1 {
 }
 
 .version-block li::before {
-  content: "•";
+  content: '•';
   margin-right: 6px;
 }
 
