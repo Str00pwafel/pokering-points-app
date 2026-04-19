@@ -629,16 +629,22 @@ _CHANGELOG_SHELL = """<!DOCTYPE html>
 """
 
 
+CHANGELOG_EXPANDED_COUNT = 5  # most-recent N versions start expanded; older ones collapsed
+
+
 @app.get("/changelog.html", response_class=HTMLResponse)
 async def get_changelog():
-    """Server-rendered changelog. Source of truth: version.py __changelog__."""
+    """Server-rendered changelog. Source of truth: version.py __changelog__.
+    Top N versions render with <details open>; older ones collapsed."""
     blocks = []
-    for v, items in __changelog__.items():
+    for idx, (v, items) in enumerate(__changelog__.items()):
         tag = ' <span class="current">(current)</span>' if v == __version__ else ""
         items_html = "".join(f"<li>{html.escape(item)}</li>" for item in items)
+        open_attr = " open" if idx < CHANGELOG_EXPANDED_COUNT else ""
         blocks.append(
-            f'<div class="version-block"><h2>v{html.escape(v)}{tag}</h2>'
-            f"<ul>{items_html}</ul></div>"
+            f'<details class="version-block"{open_attr}>'
+            f"<summary>v{html.escape(v)}{tag}</summary>"
+            f"<ul>{items_html}</ul></details>"
         )
     return HTMLResponse(content=_CHANGELOG_SHELL.format(body="\n".join(blocks)))
 
