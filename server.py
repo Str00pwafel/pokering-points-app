@@ -63,6 +63,70 @@ file_handler.addFilter(RequestIdFilter())
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
+# Audit log format: "text" (human-readable) or "json" (one-line JSON per record).
+# JSON mode is intended for log aggregators / SIEM; extras emitted via `audit()` become top-level keys.
+LOG_FORMAT = os.getenv("LOG_FORMAT", "text").strip().lower()
+
+_RESERVED_LOG_ATTRS = {
+    "name",
+    "msg",
+    "args",
+    "levelname",
+    "levelno",
+    "pathname",
+    "filename",
+    "module",
+    "exc_info",
+    "exc_text",
+    "stack_info",
+    "lineno",
+    "funcName",
+    "created",
+    "msecs",
+    "relativeCreated",
+    "thread",
+    "threadName",
+    "processName",
+    "process",
+    "message",
+    "asctime",
+    "taskName",
+}
+
+
+class JsonFormatter(logging.Formatter):
+    """One-line JSON per record; passes `extra=` kwargs through as top-level fields."""
+
+    def format(self, record):
+        payload = {
+            "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "request_id": getattr(record, "request_id", "-"),
+            "message": record.getMessage(),
+        }
+        for k, v in record.__dict__.items():
+            if k in _RESERVED_LOG_ATTRS or k.startswith("_") or k in payload:
+                continue
+            payload[k] = v
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str, ensure_ascii=False)
+
+
+if LOG_FORMAT == "json":
+    file_handler.setFormatter(JsonFormatter())
+
+
+def audit(event, **fields):
+    """Emit a structured audit event.
+    Text mode: 'event=X k=v k=v'. JSON mode: extras become top-level fields."""
+    clean = {k: v for k, v in fields.items() if v is not None}
+    parts = [f"{k}={v}" for k, v in clean.items()]
+    msg = f"event={event}" + (" " + " ".join(parts) if parts else "")
+    logger.info(msg, extra={"event": event, **clean})
+
+
 # Configuration from environment variables
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
@@ -199,8 +263,31 @@ async def session_cleanup():
 
         # Remove expired sessions
         for sid in to_remove:
-            if sid in sessions:
-                del sessions[sid]
+            session = sessions.get(sid)
+            if session is None:
+                continue
+            created = session.get("createdAt")
+            reason = (
+                "absolute_timeout"
+                if created and now - created > ABSOLUTE_TIMEOUT
+                else "idle_timeout"
+            )
+            duration_s = round((now - created).total_seconds(), 1) if created else None
+            audit(
+                "session_ended",
+                session_id=sid,
+                reason=reason,
+                duration_s=duration_s,
+                round_count=session.get("roundCount", 0),
+                total_votes=session.get("totalVotes", 0),
+                remaining_users=len(session.get("users", {})),
+            )
+            # Cancel any in-flight countdown task to prevent orphan emits post-cleanup.
+            task = session.get("countdownTask")
+            if task and not task.done():
+                task.cancel()
+                audit("countdown_cancelled", session_id=sid, reason="session_ended")
+            del sessions[sid]
 
         # Log only if sessions were removed
         if to_remove:
@@ -417,8 +504,10 @@ async def create_session(request: Request):
         "lastActivity": datetime.now(timezone.utc),
         "deck": list(DECK_PRESETS[DEFAULT_DECK_TYPE]),
         "votingEnabled": True,
+        "roundCount": 1,
+        "totalVotes": 0,
     }
-    logger.info(f"Session created: {session_id} by {client_ip}")
+    audit("session_created", session_id=session_id, ip=client_ip)
     # 303 See Other ensures browser issues GET to the session URL after POST /create
     return RedirectResponse(f"/session/{session_id}", status_code=303)
 
@@ -764,6 +853,13 @@ async def _delayed_leave(session_id, client_id, username, was_host):
     # User reconnected within grace window — abort
     if any(u.get("clientId") == client_id for u in session["users"].values()):
         return
+    audit(
+        "user_left",
+        session_id=session_id,
+        username=username,
+        client_id=(client_id or "")[:12],
+        was_host=was_host,
+    )
     if was_host:
         await sio.emit("hostLeft", room=session_id)
     else:
@@ -780,7 +876,13 @@ async def disconnect(sid):
             was_host = user.get("isHost", False)
             client_id = user.get("clientId")
             del sessions[session_id]["users"][sid]
-            logger.info(f"User disconnected: {username} from session {session_id}")
+            audit(
+                "user_disconnected",
+                session_id=session_id,
+                username=username,
+                client_id=(client_id or "")[:12],
+                was_host=was_host,
+            )
             if client_id:
                 asyncio.create_task(_delayed_leave(session_id, client_id, username, was_host))
             await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
@@ -874,14 +976,23 @@ async def join(sid, data):
     if old_sid:
         sessions[session_id]["users"].pop(old_sid, None)
         socket_ip_map.pop(old_sid, None)
-        logger.info(
-            f"Reconnect: clientId {client_id[:12]} replacing old sid in session {session_id}"
+        audit(
+            "user_reconnected",
+            session_id=session_id,
+            username=username,
+            client_id=client_id[:12],
+            ip=ip_addr,
         )
+
+    # Spectator flag: host cannot be spectator. Plumbed for Phase 8 Spectator Mode;
+    # vote-eligibility enforcement arrives with that phase.
+    is_spectator = bool(data.get("isSpectator")) and not is_host
 
     user_data = {
         "username": username,
         "vote": preserved_vote,
         "isHost": is_host,
+        "isSpectator": is_spectator,
         "clientId": client_id,
     }
 
@@ -893,7 +1004,16 @@ async def join(sid, data):
     sessions[session_id]["users"][sid] = user_data
     sessions[session_id]["lastActivity"] = datetime.now(timezone.utc)
 
-    logger.info(f"User joined: {username} -> session {session_id} (host={is_host})")
+    role = "host" if is_host else ("spectator" if is_spectator else "user")
+    if not old_sid:
+        audit(
+            "user_joined",
+            session_id=session_id,
+            username=username,
+            client_id=client_id[:12],
+            ip=ip_addr,
+            role=role,
+        )
 
     await sio.enter_room(sid, session_id)
 
@@ -967,7 +1087,30 @@ async def vote(sid, data):
 
     user = sessions[session_id]["users"].get(sid)
     if user:
+        old_vote = user.get("vote")
         user["vote"] = value
+        if old_vote is None:
+            sessions[session_id]["totalVotes"] = sessions[session_id].get("totalVotes", 0) + 1
+
+        if old_vote is not None and old_vote != value:
+            audit(
+                "vote_changed",
+                session_id=session_id,
+                username=user["username"],
+                client_id=(user.get("clientId") or "")[:12],
+                value=value,
+                previous=old_vote,
+                ip=socket_ip_map.get(sid),
+            )
+        elif old_vote is None:
+            audit(
+                "vote_cast",
+                session_id=session_id,
+                username=user["username"],
+                client_id=(user.get("clientId") or "")[:12],
+                value=value,
+                ip=socket_ip_map.get(sid),
+            )
 
         users = [
             u
@@ -985,6 +1128,12 @@ async def vote(sid, data):
             sessions[session_id]["countdownActive"] = True
             sessions[session_id]["countdownStartedAt"] = datetime.now(timezone.utc)
             count = 3
+            audit(
+                "countdown_started",
+                session_id=session_id,
+                duration_s=count,
+                round=sessions[session_id].get("roundCount", 1),
+            )
 
             async def countdown():
                 nonlocal count
@@ -1039,6 +1188,25 @@ async def vote(sid, data):
                     return
                 session["countdownActive"] = False
                 session["voteStats"] = vote_stats
+
+                # Consensus = all counted votes identical (excluding "?" and None, which were filtered above)
+                distinct = {v for _, v in voted}
+                consensus = len(voted) > 0 and len(distinct) == 1
+                vote_stats["consensus"] = consensus
+
+                vote_map = {name: v for name, v in voted}
+                audit(
+                    "round_revealed",
+                    session_id=session_id,
+                    round=session.get("roundCount", 1),
+                    votes=vote_map,
+                    average=vote_stats.get("average"),
+                    median=vote_stats.get("median"),
+                    outliers=vote_stats.get("outliers", []),
+                    consensus=consensus,
+                    voter_count=len(voted),
+                )
+
                 await sio.emit(
                     "revealVotes", {"users": session["users"], "stats": vote_stats}, room=session_id
                 )
@@ -1113,10 +1281,17 @@ async def requestNewRound(sid, data):
     old_session["deck"] = list(DECK_PRESETS[deck_type])
     old_session["deckType"] = deck_type
     old_session["votingEnabled"] = new_voting_enabled
+    old_session["roundCount"] = old_session.get("roundCount", 1) + 1
     old_session["lastActivity"] = datetime.now(timezone.utc)
 
-    logger.info(
-        f"New round in session {session_id} by host {user.get('username', 'unknown')} (deck: {deck_type}, {votes_cleared} votes cleared)"
+    audit(
+        "round_started",
+        session_id=session_id,
+        round=old_session["roundCount"],
+        host=user.get("username", "unknown"),
+        deck=deck_type,
+        votes_cleared=votes_cleared,
+        voting_enabled=new_voting_enabled,
     )
 
     await sio.emit(
@@ -1162,7 +1337,13 @@ async def changeDeck(sid, data):
     session["deckType"] = deck_type
     session["revealed"] = False  # defensive — changeDeck only runs with no votes cast
     session.pop("voteStats", None)
-    logger.info(f"Deck changed to {deck_type} in session {session_id}")
+    audit(
+        "deck_changed",
+        session_id=session_id,
+        deck=deck_type,
+        host=user.get("username", "unknown"),
+        ip=socket_ip_map.get(sid),
+    )
 
     await sio.emit("deckChanged", {"deckType": deck_type}, room=session_id)
 
@@ -1194,6 +1375,12 @@ async def hostVotingDecision(sid, data):
     user = sessions[session_id]["users"].get(sid)
     if user and user.get("isHost"):
         user["wantsToVote"] = wants_to_vote
+        audit(
+            "host_voting_decision",
+            session_id=session_id,
+            host=user.get("username", "unknown"),
+            wants_to_vote=wants_to_vote,
+        )
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
 
 
@@ -1236,7 +1423,11 @@ async def setVotingEnabled(sid, data):
 
     session["votingEnabled"] = voting_enabled
     session["revealed"] = False  # defensive — setVotingEnabled only runs with no votes cast
-    logger.info(f"Voting {'enabled' if voting_enabled else 'disabled'} in session {session_id}")
+    audit(
+        "voting_unlocked" if voting_enabled else "voting_locked",
+        session_id=session_id,
+        host=user.get("username", "unknown"),
+    )
 
     await sio.emit("sessionState", {"votingEnabled": voting_enabled}, room=session_id)
 

@@ -1,6 +1,18 @@
-__version__ = "1.4.5"
+__version__ = "1.4.6"
 
 __changelog__ = {
+    "1.4.6": [
+        "Audit: structured `audit()` event helper + LOG_FORMAT=json for SIEM/aggregator-friendly output",
+        "Audit: vote_cast / vote_changed log every vote with username, clientId, value, prior value, IP",
+        "Audit: round_revealed logs vote map, average, median, outliers, and new consensus flag",
+        "Audit: countdown_started / countdown_cancelled, round_started (was 'new round') with round counter",
+        "Audit: user_joined with role (host/user/spectator), user_reconnected distinct from user_joined",
+        "Audit: user_disconnected (immediate) and user_left (after 2s grace) as distinct events",
+        "Audit: session_ended on cleanup with reason, duration, round_count, total_votes",
+        "Audit: host actions logged — deck_changed (with IP), host_voting_decision, voting_locked/unlocked",
+        "State: per-session roundCount + totalVotes counters for end-of-session summary",
+        "Plumbing: isSpectator flag tracked server-side (enforcement lands with Phase 8 Spectator Mode UI)",
+    ],
     "1.4.5": [
         "CI: GitHub Actions workflow runs ruff + black (Python) and prettier + eslint (JS) on every push/PR to main",
         "Tooling: pyproject.toml with ruff (isort, bugbear, pyupgrade) + black (line-length 100)",
