@@ -24,6 +24,15 @@ function showToast(message, type = 'info', duration = 3000) {
   }, duration);
 }
 
+window.addEventListener('error', (e) => {
+  console.error('Uncaught error:', e.error || e.message);
+  try { showToast('Something went wrong. Refresh if issues persist.', 'error', 4000); } catch {}
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('Unhandled promise rejection:', e.reason);
+  try { showToast('Something went wrong. Refresh if issues persist.', 'error', 4000); } catch {}
+});
+
 function updateConnectionIndicator() {
   const el = document.getElementById('connectionIndicator');
   if (!el) return;
@@ -406,7 +415,16 @@ socket.on('revealVotes', ({ users, stats }) => {
   document.getElementById('newRoundBtn').disabled = false;
   document.getElementById('newSessionBtn').disabled = false;
   document.getElementById('countdown').innerText = "";
-  const votingUsers = Object.values(users).filter(u => !(u.isHost && u.wantsToVote === false));
+
+  // Disable all cards once revealed (covers late joiners whose cards were still live)
+  document.querySelectorAll('.card').forEach(c => {
+    c.classList.add('disabled');
+    c.style.pointerEvents = 'none';
+    c.style.opacity = '0.5';
+  });
+
+  // Filter out users with null vote (late joiners joining at reveal state)
+  const votingUsers = Object.values(users).filter(u => u.vote !== null && !(u.isHost && u.wantsToVote === false));
 
   const results = votingUsers
     .map((u, i) => {
@@ -502,6 +520,10 @@ socket.on('joinFailed', ({ reason }) => {
 
 socket.on('actionFailed', ({ action, reason }) => {
   showToast(reason || `Action failed${action ? ` (${action})` : ''}`, 'error', 4000);
+});
+
+socket.on('serverShutdown', ({ reason } = {}) => {
+  showToast(reason || 'Server is restarting. Reconnecting...', 'info', 5000);
 });
 
 function showModal(message, onConfirm, withInput = false, yesNoMode = false, hideCancel = false, prefill = '') {

@@ -1,6 +1,17 @@
-__version__ = "1.4.3"
+__version__ = "1.4.4"
 
 __changelog__ = {
+    "1.4.4": [
+        "Correctness: late joiners at reveal state now receive revealVotes + user chips; cards disabled",
+        "Reliability: graceful shutdown broadcasts serverShutdown event before closing sockets",
+        "Reliability: /health now reports per-background-task liveness (session/rate-limit/log cleanup)",
+        "Observability: X-Request-ID middleware with contextvars-backed trace ID in every log line",
+        "UI: global error boundary surfaces uncaught errors + unhandled rejections via toast",
+        "Build: /changelog.html now server-rendered from version.py (single source of truth)",
+        "Deps: requirements.txt tilde-pinned (~=X.Y.Z) for reproducible installs",
+        "Tooling: .editorconfig for consistent indentation across editors",
+        "Docs: README badges, architecture mermaid diagram, polished language",
+    ],
     "1.4.3": [
         "Correctness: actionFailed event for non-join rejections (host-only, rate-limit) — no redirect loop",
         "Correctness: countdown state synced to mid-countdown joiners (rejoin shows remaining time)",

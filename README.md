@@ -1,8 +1,39 @@
 # Pokering Points
 
+![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.135-009485?logo=fastapi&logoColor=white)
+![Socket.IO](https://img.shields.io/badge/Socket.IO-5.16-010101?logo=socket.io&logoColor=white)
+![Status](https://img.shields.io/badge/status-active-success)
+
 Real-time planning poker estimation app. No accounts, no database — create a session, share the link, vote.
 
 Built with FastAPI + Socket.IO backend and vanilla JavaScript frontend.
+
+<!-- Screenshot — add once available
+![Pokering Points screenshot](docs/screenshot.png)
+-->
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Client[Browser<br/>vanilla JS + Socket.IO client] -- HTTP --> FastAPI
+    Client <-- WebSocket --> SocketIO
+    subgraph Server [server.py ASGI app]
+        FastAPI[FastAPI<br/>routes: /, /create, /session/:id,<br/>/health, /metrics, /theme, /version]
+        SocketIO[Socket.IO AsyncServer<br/>events: join, vote, changeDeck,<br/>requestNewRound, setVotingEnabled]
+        State[(In-memory state<br/>sessions dict<br/>socket_ip_map<br/>rate-limit dicts)]
+        Tasks[Background tasks<br/>session_cleanup<br/>rate_limit_cleanup<br/>log_retention_cleanup]
+        FastAPI --> State
+        SocketIO --> State
+        Tasks --> State
+    end
+    Logs[(Rotating file logs<br/>logs/pokering.log)]
+    FastAPI -.-> Logs
+    SocketIO -.-> Logs
+```
+
+No database. No build step. Single process. State is lost on restart — sessions expire idle/absolute (see [Session Limits](#session-limits)).
 
 ## Quick Start
 

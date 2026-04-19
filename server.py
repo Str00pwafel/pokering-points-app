@@ -1,4 +1,5 @@
 import asyncio
+import html
 import ipaddress
 import json
 import logging
@@ -7,10 +8,12 @@ import os
 import re
 import secrets
 import socketio
+import uuid
 import uvicorn
 
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
 from fastapi import Request
@@ -19,6 +22,15 @@ from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from version import __version__, __changelog__
 
+# Per-request trace ID, propagated through the logger via a filter.
+request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
+
+class RequestIdFilter(logging.Filter):
+    def filter(self, record):
+        if not hasattr(record, "request_id"):
+            record.request_id = request_id_var.get()
+        return True
+
 # Configure logging with file rotation
 LOG_DIR = os.getenv("LOG_DIR", "logs")
 LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", 5 * 1024 * 1024))  # 5MB default
@@ -26,7 +38,7 @@ LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", 3))  # Keep 3 rotated files
 
 os.makedirs(LOG_DIR, exist_ok=True)
 
-log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+log_format = '%(asctime)s - %(request_id)s - %(name)s - %(levelname)s - %(message)s'
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -34,6 +46,7 @@ logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.WARNING)
 console_handler.setFormatter(logging.Formatter(log_format))
+console_handler.addFilter(RequestIdFilter())
 
 # File handler with rotation (info and above for audit trail)
 file_handler = logging.handlers.RotatingFileHandler(
@@ -43,6 +56,7 @@ file_handler = logging.handlers.RotatingFileHandler(
 )
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(logging.Formatter(log_format))
+file_handler.addFilter(RequestIdFilter())
 
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
@@ -145,11 +159,20 @@ socket_rate_limits = defaultdict(lambda: defaultdict(list))
 theme_config = None
 theme_config_mtime = None
 
+# Background-task liveness: each task updates its entry every iteration.
+# /health inspects staleness to detect a silently dead task.
+task_last_run: dict = {
+    "session_cleanup": None,
+    "rate_limit_cleanup": None,
+    "log_retention_cleanup": None,
+}
+
 # Session cleanup background task
 async def session_cleanup():
     """Clean up expired sessions more efficiently"""
     while True:
         await asyncio.sleep(SESSION_CLEANUP_INTERVAL.total_seconds())
+        task_last_run["session_cleanup"] = datetime.now(timezone.utc)
         now = datetime.now(timezone.utc)
         to_remove = []
 
@@ -234,6 +257,7 @@ def check_socket_rate_limit(sid, action, limit=30, window=60):
 async def rate_limit_cleanup():
     while True:
         await asyncio.sleep(RATE_LIMIT_CLEANUP_INTERVAL.total_seconds())
+        task_last_run["rate_limit_cleanup"] = datetime.now(timezone.utc)
         now = datetime.now(timezone.utc)
         join_cutoff = now - timedelta(minutes=30)
         # create cooldown is 3s; short retention prevents unnecessary memory growth
@@ -272,6 +296,7 @@ async def log_retention_cleanup():
         return
     while True:
         await asyncio.sleep(LOG_RETENTION_CHECK_INTERVAL.total_seconds())
+        task_last_run["log_retention_cleanup"] = datetime.now(timezone.utc)
         try:
             cutoff = datetime.now(timezone.utc).timestamp() - LOG_RETENTION_DAYS * 86400
             removed = 0
@@ -300,6 +325,12 @@ async def lifespan(app: FastAPI):
     rate_limit_task = asyncio.create_task(rate_limit_cleanup())
     log_retention_task = asyncio.create_task(log_retention_cleanup())
     yield
+    # Graceful shutdown: warn connected clients before cancelling background work.
+    try:
+        await sio.emit("serverShutdown", {"reason": "Server is restarting"})
+        await asyncio.sleep(0.2)  # brief flush window so websocket frames hit the wire
+    except Exception as e:
+        logger.warning(f"serverShutdown broadcast failed: {e}")
     cleanup_task.cancel()
     rate_limit_task.cancel()
     log_retention_task.cancel()
@@ -382,6 +413,17 @@ async def get_session(session_id: str):
     return FileResponse("public/index.html")
 
 @app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    rid = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+    token = request_id_var.set(rid)
+    try:
+        response = await call_next(request)
+    finally:
+        request_id_var.reset(token)
+    response.headers["X-Request-ID"] = rid
+    return response
+
+@app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-App-Version"] = __version__
@@ -452,6 +494,38 @@ def load_theme_config():
     except Exception as e:
         logger.error(f"Error loading theme config: {e}")
         return None
+
+_CHANGELOG_SHELL = """<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8" />
+   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+   <title>Changelog — Pokering Points</title>
+   <link rel="stylesheet" href="/css/theme-variables.css" />
+   <link rel="stylesheet" href="/css/changelog.css" />
+   <script src="/javascript/theme-loader.js"></script>
+</head>
+<body>
+   <a class="back" href="/">← Back</a>
+   <h1>Changelog</h1>
+   <div class="subtitle">All versions</div>
+   <div id="changelog">{body}</div>
+</body>
+</html>
+"""
+
+@app.get("/changelog.html", response_class=HTMLResponse)
+async def get_changelog():
+    """Server-rendered changelog. Source of truth: version.py __changelog__."""
+    blocks = []
+    for v, items in __changelog__.items():
+        tag = ' <span class="current">(current)</span>' if v == __version__ else ""
+        items_html = "".join(f"<li>{html.escape(item)}</li>" for item in items)
+        blocks.append(
+            f'<div class="version-block"><h2>v{html.escape(v)}{tag}</h2>'
+            f'<ul>{items_html}</ul></div>'
+        )
+    return HTMLResponse(content=_CHANGELOG_SHELL.format(body="\n".join(blocks)))
 
 @app.get("/version")
 async def get_version():
@@ -534,14 +608,40 @@ async def get_theme():
         logger.error(f"Error loading theme: {e}")
         return default_theme
 
+# Staleness threshold = 2x the task interval (plus a small buffer for the first-run window).
+_TASK_STALE_THRESHOLDS = {
+    "session_cleanup": SESSION_CLEANUP_INTERVAL * 2,
+    "rate_limit_cleanup": RATE_LIMIT_CLEANUP_INTERVAL * 2,
+    "log_retention_cleanup": LOG_RETENTION_CHECK_INTERVAL * 2,
+}
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring"""
     now = datetime.now(timezone.utc)
     uptime = (now - app_start_time).total_seconds()
 
+    tasks_report = {}
+    any_stale = False
+    for name, threshold in _TASK_STALE_THRESHOLDS.items():
+        last = task_last_run.get(name)
+        if last is None:
+            # Not yet run — only consider stale if uptime exceeds threshold.
+            stale = uptime > threshold.total_seconds()
+            tasks_report[name] = {"last_run_s_ago": None, "stale": stale}
+        else:
+            age = (now - last).total_seconds()
+            stale = age > threshold.total_seconds()
+            tasks_report[name] = {"last_run_s_ago": round(age, 1), "stale": stale}
+        if stale:
+            any_stale = True
+    # log_retention_cleanup is skipped entirely when LOG_RETENTION_DAYS<=0; don't mark unhealthy.
+    if LOG_RETENTION_DAYS <= 0:
+        tasks_report["log_retention_cleanup"]["stale"] = False
+        any_stale = any(t["stale"] for t in tasks_report.values())
+
     return {
-        "status": "healthy",
+        "status": "unhealthy" if any_stale else "healthy",
         "version": __version__,
         "uptime_seconds": round(uptime, 2),
         "sessions": {
@@ -552,7 +652,8 @@ async def health_check():
         "rate_limits": {
             "tracked_ips_join": len(last_join_time),
             "tracked_ips_create": len(last_create_time)
-        }
+        },
+        "background_tasks": tasks_report,
     }
 
 @app.get("/metrics")
@@ -763,6 +864,16 @@ async def join(sid, data):
             remaining = max(0, 3 - int(elapsed))
             await sio.emit("countdown", remaining, room=sid)
 
+    # Sync reveal state for late joiners so cards are disabled and results render.
+    # Skip during countdown — stats not yet computed; room-wide revealVotes fires soon.
+    if sessions[session_id].get("revealed") and not sessions[session_id].get("countdownActive"):
+        await sio.emit("revealVotes", {
+            "users": sessions[session_id]["users"],
+            "stats": sessions[session_id].get("voteStats", {})
+        }, room=sid)
+        # Re-emit usersUpdate to this sid so vote chips render (client needs votesRevealed=true first)
+        await sio.emit("usersUpdate", sessions[session_id]["users"], room=sid)
+
     # Broadcast join notification only for fresh joins (not reconnects)
     if not old_sid:
         await sio.emit("userJoined", {"username": username, "clientId": client_id}, room=session_id)
@@ -867,6 +978,7 @@ async def vote(sid, data):
                 if session_id not in sessions:
                     return
                 session["countdownActive"] = False
+                session["voteStats"] = vote_stats
                 await sio.emit("revealVotes", {
                     "users": session["users"],
                     "stats": vote_stats
@@ -929,6 +1041,7 @@ async def requestNewRound(sid, data):
     for u in old_session["users"].values():
         u["vote"] = None
     old_session["revealed"] = False
+    old_session.pop("voteStats", None)
     old_session["deck"] = list(DECK_PRESETS[deck_type])
     old_session["deckType"] = deck_type
     old_session["votingEnabled"] = new_voting_enabled
@@ -975,6 +1088,7 @@ async def changeDeck(sid, data):
     session["deck"] = DECK_PRESETS[deck_type]
     session["deckType"] = deck_type
     session["revealed"] = False  # defensive — changeDeck only runs with no votes cast
+    session.pop("voteStats", None)
     logger.info(f"Deck changed to {deck_type} in session {session_id}")
 
     await sio.emit("deckChanged", {"deckType": deck_type}, room=session_id)
