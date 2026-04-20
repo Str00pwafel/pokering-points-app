@@ -49,8 +49,10 @@ button:disabled {
   position: relative;
   width: 64px;
   height: 92px;
+  padding: 0;
   font-size: 28px;
   font-weight: bold;
+  font-family: inherit;
   background: linear-gradient(145deg, var(--primary-action), var(--primary-hover));
   color: var(--text-primary);
   border-radius: 10px;
@@ -68,6 +70,7 @@ button:disabled {
     background 0.2s ease;
   user-select: none;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-sizing: border-box;
 }
 
 .card::before,
@@ -90,11 +93,16 @@ button:disabled {
   transform: rotate(180deg);
 }
 
-.card:hover:not(.voting-locked):not(.disabled) {
+.card:hover:not(.voting-locked):not(:disabled) {
   transform: translateY(-6px);
   box-shadow:
     0 8px 14px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
 }
 
 .card.selected {
@@ -109,6 +117,23 @@ button:disabled {
 .card.selected::before,
 .card.selected::after {
   opacity: 0.6;
+}
+
+.card:disabled {
+  background: linear-gradient(145deg, var(--primary-action), var(--primary-hover));
+  color: var(--text-primary);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card.selected:disabled {
+  opacity: 1;
+  background: linear-gradient(145deg, var(--success), #25a330);
+  color: var(--primary-bg);
+  transform: translateY(-10px);
+  box-shadow:
+    0 10px 20px rgba(46, 204, 64, 0.4),
+    0 0 0 2px var(--success);
 }
 
 #countdown {
@@ -778,42 +803,9 @@ button:disabled {
   }
 }
 
-/* ── Confetti on consensus ─────────────────────────────────── */
-.confetti-container {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  z-index: 9998;
-}
-
-.confetti-piece {
-  position: absolute;
-  width: 8px;
-  height: 14px;
-  top: -20px;
-  opacity: 0.95;
-  animation: confettiFall linear forwards;
-}
-
-@keyframes confettiFall {
-  0% {
-    transform: translateY(0) rotate(0deg);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(110vh) rotate(720deg);
-    opacity: 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .vote-card {
     animation: none;
-  }
-  .confetti-piece {
-    animation: none;
-    display: none;
   }
   .connection-indicator.reconnecting,
   .connection-indicator.disconnected {

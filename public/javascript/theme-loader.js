@@ -1,37 +1,55 @@
 // Theme Loader - Loads and applies theme from server
+const THEME_CACHE_KEY = 'pokeringThemeCache';
+const THEME_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  for (const [key, value] of Object.entries(theme.colors || {})) {
+    root.style.setProperty(`--${key}`, value);
+  }
+  const logo = document.querySelector('img.logo');
+  if (logo && theme.logo) {
+    logo.src = `images/${theme.logo}`;
+    if (theme.name === 'Christmas' && theme.decorations) {
+      addChristmasDecorations(logo, theme.decorations);
+    } else if (theme.name === 'Koningsdag' && theme.decorations) {
+      addKoningsdagDecorations(logo, theme.decorations);
+    }
+  }
+}
+
 (async function loadTheme() {
+  // Cache lookup — skip network if fresh. Version header stored for future invalidation use.
+  try {
+    const raw = localStorage.getItem(THEME_CACHE_KEY);
+    if (raw) {
+      const cached = JSON.parse(raw);
+      if (cached && cached.ts && Date.now() - cached.ts < THEME_CACHE_TTL_MS && cached.theme) {
+        applyTheme(cached.theme);
+        return;
+      }
+    }
+  } catch {
+    /* corrupted cache — fall through to fetch */
+  }
+
   try {
     const response = await fetch('/theme');
     if (!response.ok) {
       console.warn('Failed to load theme, using defaults');
       return;
     }
-
     const theme = await response.json();
-
-    // Apply CSS variables to root element
-    const root = document.documentElement;
-    for (const [key, value] of Object.entries(theme.colors)) {
-      root.style.setProperty(`--${key}`, value);
+    const version = response.headers.get('X-App-Version') || '';
+    applyTheme(theme);
+    try {
+      localStorage.setItem(THEME_CACHE_KEY, JSON.stringify({ theme, version, ts: Date.now() }));
+    } catch {
+      /* quota / private-mode — cache miss acceptable */
     }
-
-    // Update logo if it exists on the page
-    const logo = document.querySelector('img.logo');
-    if (logo && theme.logo) {
-      logo.src = `images/${theme.logo}`;
-
-      // Add theme-specific decorations
-      if (theme.name === 'Christmas' && theme.decorations) {
-        addChristmasDecorations(logo, theme.decorations);
-      } else if (theme.name === 'Koningsdag' && theme.decorations) {
-        addKoningsdagDecorations(logo, theme.decorations);
-      }
-    }
-
     console.log(`Theme loaded: ${theme.name}`);
   } catch (error) {
     console.error('Error loading theme:', error);
-    // Silently fail - CSS will use default variable values
   }
 })();
 

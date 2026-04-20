@@ -1,6 +1,16 @@
-__version__ = "1.4.6"
+__version__ = "1.4.7"
 
 __changelog__ = {
+    "1.4.7": [
+        "A11y: `#status` marked `aria-live=polite` — screen readers announce vote progress",
+        "A11y: focus trapped inside modals (username, host settings, confirms); Escape closes cancellable modals",
+        "A11y: vote cards rendered as native `<button>` with `aria-label`, keyboard-focusable, Enter/Space activate",
+        "A11y: koningsdag `--text-secondary` darkened to #222 (was #FFF5E6) — WCAG AA on orange primary-bg",
+        "Perf: diff-based `userVoted` event replaces full `usersUpdate` on each vote — patch-only on clients",
+        "Perf: confetti rewritten with canvas + requestAnimationFrame (was 80 DOM nodes + CSS animation)",
+        "Perf: `/theme` response cached in localStorage for 1 hour — skips network on repeat page loads",
+        "Perf: vendored `socket.io.min.js` served with `Cache-Control: public, max-age=31536000, immutable`",
+    ],
     "1.4.6": [
         "Audit: structured `audit()` event helper + LOG_FORMAT=json for SIEM/aggregator-friendly output",
         "Audit: vote_cast / vote_changed log every vote with username, clientId, value, prior value, IP",

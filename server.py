@@ -819,6 +819,16 @@ pokering_rate_limit_ips_create {len(last_create_time)}
     return HTMLResponse(content=metrics_text, media_type="text/plain")
 
 
+@app.get("/javascript/vendor/socket.io.min.js")
+async def vendored_socket_io():
+    # Vendored, version-pinned: long-cache to skip the round-trip on repeat visits.
+    return FileResponse(
+        "public/javascript/vendor/socket.io.min.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 app.mount("/", StaticFiles(directory="public"), name="static")
 
 # Combine FastAPI and Socket.IO
@@ -1126,7 +1136,13 @@ async def vote(sid, data):
 
         all_voted = len(users) > 0 and all(u["vote"] is not None for u in users)
 
-        await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
+        # Lightweight diff event — avoids broadcasting the full user dict on every vote.
+        # Clients patch their local snapshot; real vote values arrive via revealVotes.
+        await sio.emit(
+            "userVoted",
+            {"clientId": user.get("clientId")},
+            room=session_id,
+        )
 
         if all_voted and not sessions[session_id]["revealed"]:
             sessions[session_id]["revealed"] = True

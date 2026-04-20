@@ -24,6 +24,41 @@ function showToast(message, type = 'info', duration = 3000) {
   }, duration);
 }
 
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function trapFocus(container) {
+  const prevActive = document.activeElement;
+  const getFocusable = () =>
+    Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+      (el) => el.offsetParent !== null
+    );
+
+  const initial = getFocusable();
+  if (initial.length) initial[0].focus();
+
+  function onKeyDown(e) {
+    if (e.key !== 'Tab') return;
+    const els = getFocusable();
+    if (!els.length) return;
+    const first = els[0];
+    const last = els[els.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !container.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+  container.addEventListener('keydown', onKeyDown);
+  return () => {
+    container.removeEventListener('keydown', onKeyDown);
+    if (prevActive && typeof prevActive.focus === 'function') prevActive.focus();
+  };
+}
+
 window.addEventListener('error', (e) => {
   console.error('Uncaught error:', e.error || e.message);
   try {
@@ -218,11 +253,14 @@ function renderCards() {
   cardContainer.innerHTML = '';
   selectedCard = null;
   cardValues.forEach((value) => {
-    const card = document.createElement('div');
+    const card = document.createElement('button');
+    card.type = 'button';
     card.classList.add('card');
     card.dataset.value = value;
     card.textContent = value;
-    card.onclick = () => selectCard(card, value);
+    card.setAttribute('aria-label', `Vote ${value}`);
+    if (votesRevealed) card.disabled = true;
+    card.addEventListener('click', () => selectCard(card, value));
     cardContainer.appendChild(card);
   });
   updateVotingLockState();
@@ -257,16 +295,9 @@ function selectCard(element, value) {
   selectedCard = element;
   element.classList.add('selected');
 
-  const allCards = document.querySelectorAll('.card');
-  allCards.forEach((card) => {
-    card.classList.add('disabled');
-    card.style.pointerEvents = 'none';
-    card.style.opacity = '0.5';
+  document.querySelectorAll('.card').forEach((card) => {
+    card.disabled = true;
   });
-
-  selectedCard.classList.remove('disabled');
-  selectedCard.style.pointerEvents = 'none';
-  selectedCard.style.opacity = '1';
 
   socket.emit('vote', { sessionId, value });
 }
@@ -329,33 +360,23 @@ function ensureConnectionIndicator() {
   updateConnectionIndicator();
 }
 
-socket.on('usersUpdate', (users) => {
-  ensureConnectionIndicator();
+let currentUsers = {};
+
+function renderUserList() {
+  const users = currentUsers;
   const myUser = Object.values(users).find((u) => u.clientId === clientId);
   const isHost = myUser?.isHost;
 
   document.getElementById('newRoundBtn').style.display = isHost ? 'inline-block' : 'none';
   document.getElementById('deckSelector').style.display = isHost ? 'inline-block' : 'none';
-
   const toggleBtn = document.getElementById('toggleVotingBtn');
   toggleBtn.style.display = isHost ? 'inline-block' : 'none';
 
-  // Grey out deck selector if votes have been cast
   if (isHost) {
     const hasVotes = Object.values(users).some((u) => u.vote !== null);
     document.getElementById('deckSelector').disabled = hasVotes || votesRevealed;
     toggleBtn.disabled = hasVotes && !votesRevealed;
     updateToggleBtnLabel();
-  }
-
-  if (isHost && !window.hostSettingsShown) {
-    window.hostSettingsShown = true;
-
-    if (myUser?.wantsToVote === false) {
-      document.getElementById('cardOptions').style.display = 'none';
-    } else if (myUser?.wantsToVote === undefined || myUser?.wantsToVote === null) {
-      showHostSettingsModal();
-    }
   }
 
   const userList = Object.values(users);
@@ -364,58 +385,83 @@ socket.on('usersUpdate', (users) => {
   document.getElementById('status').innerText = `${selected} of ${votingUsers.length} selected`;
 
   const userCountEl = document.getElementById('userCount');
-  if (userCountEl) {
-    userCountEl.textContent = `${selected}/${votingUsers.length} voted`;
-  }
+  if (userCountEl) userCountEl.textContent = `${selected}/${votingUsers.length} voted`;
 
   const userListContent = document.getElementById('userListContent');
-  if (userListContent) {
-    userListContent.innerHTML = '';
+  if (!userListContent) return;
+  userListContent.innerHTML = '';
 
-    userList.forEach((user) => {
-      const isSpectator = user.isHost && user.wantsToVote === false;
-      const hasVoted = user.vote !== null;
+  userList.forEach((user) => {
+    const isSpectator = user.isHost && user.wantsToVote === false;
+    const hasVoted = user.vote !== null;
 
-      const row = document.createElement('div');
-      row.className = 'user-row';
-      if (isSpectator) row.classList.add('spectator');
-      else if (hasVoted) row.classList.add('voted');
-      else row.classList.add('pending');
+    const row = document.createElement('div');
+    row.className = 'user-row';
+    if (isSpectator) row.classList.add('spectator');
+    else if (hasVoted) row.classList.add('voted');
+    else row.classList.add('pending');
 
-      const status = document.createElement('span');
-      status.className = 'user-status';
-      if (isSpectator) status.textContent = '👁';
-      else if (hasVoted) status.textContent = '✓';
-      else status.textContent = '⋯';
-      status.title = isSpectator ? 'Spectating' : hasVoted ? 'Voted' : 'Waiting';
+    const status = document.createElement('span');
+    status.className = 'user-status';
+    if (isSpectator) status.textContent = '👁';
+    else if (hasVoted) status.textContent = '✓';
+    else status.textContent = '⋯';
+    status.title = isSpectator ? 'Spectating' : hasVoted ? 'Voted' : 'Waiting';
 
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'user-name';
-      nameSpan.textContent = user.username;
-      nameSpan.title = user.username;
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'user-name';
+    nameSpan.textContent = user.username;
+    nameSpan.title = user.username;
 
-      row.appendChild(status);
-      row.appendChild(nameSpan);
+    row.appendChild(status);
+    row.appendChild(nameSpan);
 
-      if (user.isHost) {
-        const badge = document.createElement('span');
-        badge.className = 'user-badge host';
-        badge.textContent = '👑';
-        badge.title = 'Host';
-        row.appendChild(badge);
-      }
+    if (user.isHost) {
+      const badge = document.createElement('span');
+      badge.className = 'user-badge host';
+      badge.textContent = '👑';
+      badge.title = 'Host';
+      row.appendChild(badge);
+    }
 
-      // Show vote value chip after reveal
-      if (votesRevealed && hasVoted && !isSpectator) {
-        const chip = document.createElement('span');
-        chip.className = 'user-vote-chip';
-        chip.textContent = user.vote;
-        row.appendChild(chip);
-      }
+    if (votesRevealed && hasVoted && !isSpectator) {
+      const chip = document.createElement('span');
+      chip.className = 'user-vote-chip';
+      chip.textContent = user.vote;
+      row.appendChild(chip);
+    }
 
-      userListContent.appendChild(row);
-    });
+    userListContent.appendChild(row);
+  });
+}
+
+socket.on('usersUpdate', (users) => {
+  ensureConnectionIndicator();
+  currentUsers = users;
+
+  const myUser = Object.values(users).find((u) => u.clientId === clientId);
+  const isHost = myUser?.isHost;
+
+  if (isHost && !window.hostSettingsShown) {
+    window.hostSettingsShown = true;
+    if (myUser?.wantsToVote === false) {
+      document.getElementById('cardOptions').style.display = 'none';
+    } else if (myUser?.wantsToVote === undefined || myUser?.wantsToVote === null) {
+      showHostSettingsModal();
+    }
   }
+
+  renderUserList();
+});
+
+// Diff event: vote cast/changed. Patches local snapshot; avoids full dict broadcast.
+// Real vote value arrives later via revealVotes (we use `true` as a "voted" sentinel).
+socket.on('userVoted', ({ clientId: votedId }) => {
+  if (!votedId) return;
+  const user = Object.values(currentUsers).find((u) => u.clientId === votedId);
+  if (!user) return;
+  if (user.vote === null) user.vote = true;
+  renderUserList();
 });
 
 socket.on('countdown', (seconds) => {
@@ -428,6 +474,7 @@ socket.on('countdown', (seconds) => {
 
 socket.on('revealVotes', ({ users, stats }) => {
   votesRevealed = true;
+  currentUsers = users;
   updateToggleBtnLabel();
   const toggleBtn = document.getElementById('toggleVotingBtn');
   toggleBtn.disabled = false;
@@ -437,9 +484,7 @@ socket.on('revealVotes', ({ users, stats }) => {
 
   // Disable all cards once revealed (covers late joiners whose cards were still live)
   document.querySelectorAll('.card').forEach((c) => {
-    c.classList.add('disabled');
-    c.style.pointerEvents = 'none';
-    c.style.opacity = '0.5';
+    c.disabled = true;
   });
 
   // Filter out users with null vote (late joiners joining at reveal state)
@@ -496,6 +541,7 @@ socket.on('revealVotes', ({ users, stats }) => {
 
   document.getElementById('votesDisplay').innerHTML = results;
   document.getElementById('voteSummary').innerHTML = summary;
+  renderUserList();
 
   // Consensus detection: all non-"?" votes identical, at least 2 voters
   const realVotes = votingUsers.map((u) => u.vote).filter((v) => v !== null && v !== '?');
@@ -508,25 +554,68 @@ socket.on('revealVotes', ({ users, stats }) => {
 function launchConfetti() {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const colors = ['#ff3b3b', '#ffbf00', '#2ecc40', '#0074d9', '#b10dc9', '#ff851b', '#ffffff'];
-  const container = document.createElement('div');
-  container.className = 'confetti-container';
-  document.body.appendChild(container);
+  const dpr = window.devicePixelRatio || 1;
+  const canvas = document.createElement('canvas');
+  canvas.style.position = 'fixed';
+  canvas.style.inset = '0';
+  canvas.style.pointerEvents = 'none';
+  canvas.style.zIndex = '9998';
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  document.body.appendChild(canvas);
 
-  const pieces = 80;
-  for (let i = 0; i < pieces; i++) {
-    const piece = document.createElement('div');
-    piece.className = 'confetti-piece';
-    piece.style.left = Math.random() * 100 + '%';
-    piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-    piece.style.animationDuration = 2 + Math.random() * 2 + 's';
-    piece.style.animationDelay = Math.random() * 0.5 + 's';
-    piece.style.width = 6 + Math.random() * 6 + 'px';
-    piece.style.height = 10 + Math.random() * 8 + 'px';
-    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
-    container.appendChild(piece);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+
+  const pieces = Array.from({ length: 80 }, () => ({
+    x: Math.random() * w,
+    y: -20 - Math.random() * h * 0.3,
+    width: 6 + Math.random() * 6,
+    height: 10 + Math.random() * 8,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    vx: (Math.random() - 0.5) * 60,
+    vy: 180 + Math.random() * 140,
+    rot: Math.random() * Math.PI * 2,
+    rotV: (Math.random() - 0.5) * 8,
+  }));
+
+  const DURATION = 5000;
+  let start = null;
+  let last = null;
+
+  function frame(ts) {
+    if (start === null) start = ts;
+    if (last === null) last = ts;
+    const dt = (ts - last) / 1000;
+    last = ts;
+    const elapsed = ts - start;
+    const alpha = Math.max(0, 1 - elapsed / DURATION);
+
+    ctx.clearRect(0, 0, w, h);
+    for (const p of pieces) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.rotV * dt;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.width / 2, -p.height / 2, p.width, p.height);
+      ctx.restore();
+    }
+
+    if (elapsed < DURATION) {
+      requestAnimationFrame(frame);
+    } else {
+      canvas.remove();
+    }
   }
-
-  setTimeout(() => container.remove(), 5000);
+  requestAnimationFrame(frame);
 }
 
 socket.on('hostLeft', () => {
@@ -586,11 +675,25 @@ function showModal(
   }
 
   backdrop.classList.remove('hidden');
+  const releaseFocus = trapFocus(document.getElementById('modalContent'));
+  // Focus the input if present (overrides trap's default first-focusable).
+  const inputEl = document.getElementById('modalInput');
+  if (inputEl) inputEl.focus();
+
+  function onEscape(e) {
+    if (e.key !== 'Escape') return;
+    if (hideCancel) return;
+    e.preventDefault();
+    cancelHandler();
+  }
+  document.addEventListener('keydown', onEscape);
 
   function cleanup() {
     backdrop.classList.add('hidden');
     confirmBtn.removeEventListener('click', confirmHandler);
     cancelBtn.removeEventListener('click', cancelHandler);
+    document.removeEventListener('keydown', onEscape);
+    releaseFocus();
   }
 
   function confirmHandler() {
@@ -663,10 +766,17 @@ function updateVotingLockState() {
   const cards = document.querySelectorAll('.card');
   if (!votingEnabled) {
     lockEl.classList.remove('hidden');
-    cards.forEach((c) => c.classList.add('voting-locked'));
+    cards.forEach((c) => {
+      c.classList.add('voting-locked');
+      c.disabled = true;
+    });
   } else {
     lockEl.classList.add('hidden');
-    cards.forEach((c) => c.classList.remove('voting-locked'));
+    cards.forEach((c) => {
+      c.classList.remove('voting-locked');
+      // Leave disabled=true if reveal is active or this card isn't the selected one post-vote.
+      if (!votesRevealed && !selectedCard) c.disabled = false;
+    });
   }
   updateToggleBtnLabel();
 }
@@ -684,8 +794,12 @@ function updateToggleBtnLabel() {
 }
 
 // ── Host settings modal ───────────────────────────────────────────────────────
+let releaseHostSettingsFocus = null;
+
 function showHostSettingsModal() {
-  document.getElementById('hostSettingsBackdrop').classList.remove('hidden');
+  const backdrop = document.getElementById('hostSettingsBackdrop');
+  backdrop.classList.remove('hidden');
+  releaseHostSettingsFocus = trapFocus(document.getElementById('hostSettingsContent'));
 }
 
 function confirmHostSettings() {
@@ -693,6 +807,10 @@ function confirmHostSettings() {
   const votingEnabledVal = document.getElementById('toggleVotingEnabled').checked;
 
   document.getElementById('hostSettingsBackdrop').classList.add('hidden');
+  if (releaseHostSettingsFocus) {
+    releaseHostSettingsFocus();
+    releaseHostSettingsFocus = null;
+  }
 
   socket.emit('hostVotingDecision', { sessionId, wantsToVote });
   socket.emit('setVotingEnabled', { sessionId, votingEnabled: votingEnabledVal });
