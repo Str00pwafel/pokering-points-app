@@ -145,7 +145,10 @@ async function updateVersionBadge() {
     const tooltip = document.getElementById('versionTooltip');
     if (tooltip && changelog) {
       tooltip.innerHTML = Object.entries(changelog)
-        .map(([v, items]) => `<h4>v${v}</h4><ul>${items.map((c) => `<li>${c}</li>`).join('')}</ul>`)
+        .map(
+          ([v, items]) =>
+            `<h4>v${escapeHTML(v)}</h4><ul>${items.map((c) => `<li>${escapeHTML(c)}</li>`).join('')}</ul>`
+        )
         .join('');
     }
   } catch (err) {
@@ -154,6 +157,11 @@ async function updateVersionBadge() {
 }
 
 let selectedCard = null;
+
+const DEFAULT_TITLE = 'Pokering Points';
+function setDocTitle(prefix) {
+  document.title = prefix ? `${prefix} — ${DEFAULT_TITLE}` : DEFAULT_TITLE;
+}
 
 function promptUsername() {
   showModal(
@@ -343,6 +351,7 @@ socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
 
   updateVotingLockState();
   updateToggleBtnLabel();
+  setDocTitle(null);
   showToast('New round started', 'info');
   if (votingChanged) {
     showToast(enabled ? 'Voting unlocked' : 'Voting locked', enabled ? 'success' : 'info');
@@ -386,6 +395,10 @@ function renderUserList() {
 
   const userCountEl = document.getElementById('userCount');
   if (userCountEl) userCountEl.textContent = `${selected}/${votingUsers.length} voted`;
+
+  if (votesRevealed) setDocTitle('Votes revealed');
+  else if (votingUsers.length > 0) setDocTitle(`${selected}/${votingUsers.length} voted`);
+  else setDocTitle(null);
 
   const userListContent = document.getElementById('userListContent');
   if (!userListContent) return;
@@ -821,6 +834,37 @@ function confirmHostSettings() {
 
   sessionStorage.setItem(`jiraPokerHostVoteDecision_${sessionId}`, String(wantsToVote));
 }
+
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const modal = document.getElementById('modalBackdrop');
+  const hostModal = document.getElementById('hostSettingsBackdrop');
+  if (modal && !modal.classList.contains('hidden')) return;
+  if (hostModal && !hostModal.classList.contains('hidden')) return;
+
+  const active = document.activeElement;
+  const tag = active?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active?.isContentEditable) {
+    return;
+  }
+
+  if (e.key >= '1' && e.key <= '9') {
+    if (votesRevealed || !votingEnabled || selectedCard) return;
+    const idx = parseInt(e.key, 10) - 1;
+    const cards = cardContainer.querySelectorAll('.card:not([disabled])');
+    if (idx >= cards.length) return;
+    e.preventDefault();
+    cards[idx].click();
+  } else if (e.key === 'Enter') {
+    if (tag === 'BUTTON' || tag === 'A') return;
+    if (!votesRevealed) return;
+    const btn = document.getElementById('newRoundBtn');
+    if (!btn || btn.disabled || btn.style.display === 'none') return;
+    e.preventDefault();
+    startNewRound();
+  }
+});
 
 document.getElementById('newSessionBtn').addEventListener('click', (e) => {
   e.preventDefault();

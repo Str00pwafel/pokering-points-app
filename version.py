@@ -1,6 +1,13 @@
-__version__ = "1.4.7"
+__version__ = "1.4.8"
 
 __changelog__ = {
+    "1.4.8": [
+        "UX: browser tab title reflects live vote progress (`N/M voted — Pokering Points`)",
+        "UX: tab title switches to `Votes revealed` on reveal, restores default on round reset",
+        "UX: number keys 1-9 select corresponding card during active voting",
+        "UX: Enter triggers new round for host after votes revealed",
+        "UX: keyboard shortcuts ignored while modals open or form fields focused",
+    ],
     "1.4.7": [
         "Accessibility: `#status` marked `aria-live=polite` — screen readers announce vote progress",
         "Accessibility: focus trapped inside modals (username, host settings, confirms); Escape closes cancellable modals",
