@@ -2,14 +2,14 @@ __version__ = "1.4.7"
 
 __changelog__ = {
     "1.4.7": [
-        "A11y: `#status` marked `aria-live=polite` — screen readers announce vote progress",
-        "A11y: focus trapped inside modals (username, host settings, confirms); Escape closes cancellable modals",
-        "A11y: vote cards rendered as native `<button>` with `aria-label`, keyboard-focusable, Enter/Space activate",
-        "A11y: koningsdag `--text-secondary` darkened to #222 (was #FFF5E6) — WCAG AA on orange primary-bg",
-        "Perf: diff-based `userVoted` event replaces full `usersUpdate` on each vote — patch-only on clients",
-        "Perf: confetti rewritten with canvas + requestAnimationFrame (was 80 DOM nodes + CSS animation)",
-        "Perf: `/theme` response cached in localStorage for 1 hour — skips network on repeat page loads",
-        "Perf: vendored `socket.io.min.js` served with `Cache-Control: public, max-age=31536000, immutable`",
+        "Accessibility: `#status` marked `aria-live=polite` — screen readers announce vote progress",
+        "Accessibility: focus trapped inside modals (username, host settings, confirms); Escape closes cancellable modals",
+        "Accessibility: vote cards rendered as native `<button>` with `aria-label`, keyboard-focusable, Enter/Space activate",
+        "Accessibility: koningsdag `--text-secondary` darkened to #222 (was #FFF5E6) — WCAG AA on orange primary-bg",
+        "Performance: diff-based `userVoted` event replaces full `usersUpdate` on each vote — patch-only on clients",
+        "Performance: confetti rewritten with canvas + requestAnimationFrame (was 80 DOM nodes + CSS animation)",
+        "Performance: `/theme` response cached in localStorage for 1 hour — skips network on repeat page loads",
+        "Performance: vendored `socket.io.min.js` served with `Cache-Control: public, max-age=31536000, immutable`",
     ],
     "1.4.6": [
         "Audit: structured `audit()` event helper + LOG_FORMAT=json for SIEM/aggregator-friendly output",
@@ -21,7 +21,7 @@ __changelog__ = {
         "Audit: session_ended on cleanup with reason, duration, round_count, total_votes",
         "Audit: host actions logged — deck_changed (with IP), host_voting_decision, voting_locked/unlocked",
         "State: per-session roundCount + totalVotes counters for end-of-session summary",
-        "Plumbing: isSpectator flag tracked server-side (enforcement lands with Phase 8 Spectator Mode UI)",
+        "State: isSpectator flag tracked server-side (enforcement lands with Phase 8 Spectator Mode UI)",
     ],
     "1.4.5": [
         "CI: GitHub Actions workflow runs ruff + black (Python) and prettier + eslint (JS) on every push/PR to main",
@@ -37,9 +37,9 @@ __changelog__ = {
         "Observability: X-Request-ID middleware with contextvars-backed trace ID in every log line",
         "UI: global error boundary surfaces uncaught errors + unhandled rejections via toast",
         "Build: /changelog.html now server-rendered from version.py (single source of truth)",
-        "Deps: requirements.txt tilde-pinned (~=X.Y.Z) for reproducible installs",
+        "Dependencies: requirements.txt tilde-pinned (~=X.Y.Z) for reproducible installs",
         "Tooling: .editorconfig for consistent indentation across editors",
-        "Docs: README badges, architecture mermaid diagram, polished language",
+        "Documentation: README badges, architecture mermaid diagram, polished language",
     ],
     "1.4.3": [
         "Correctness: actionFailed event for non-join rejections (host-only, rate-limit) — no redirect loop",
@@ -91,8 +91,8 @@ __changelog__ = {
         "Host vote decision now scoped per-session to prevent modal skip across sessions",
     ],
     "1.3.2": [
-        "Fix rate limiting: reduce create session cooldown from 10s to 3s",
-        "Fix rate limiting: increase new round limit from 3/hour to 30/hour",
+        "Reliability: reduce create session cooldown from 10s to 3s",
+        "Reliability: increase new round limit from 3/hour to 30/hour",
         "Dependencies: update all packages to latest, remove unused shortuuid",
     ],
     "1.3.1": [
@@ -108,7 +108,7 @@ __changelog__ = {
         "Version tooltip: hover version badge to see changelog",
         "Security: crypto-secure client IDs, removed CSP unsafe-inline",
         "Security: proxy-aware IP detection, timezone-aware rate limiting",
-        "Bug fixes: session ID message, noscript text, outlier colors, default deck",
+        "Correctness: session ID message, noscript text, outlier colors, default deck",
     ],
     "1.2.0": [
         "Christmas theme with configurable decorations and snow particles",
