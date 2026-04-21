@@ -1,6 +1,14 @@
-__version__ = "1.4.8"
+__version__ = "1.5.0"
 
 __changelog__ = {
+    "1.5.0": [
+        "Spectator: any user can toggle spectate on/off via always-visible button (was host-only)",
+        "Spectator: toggle gated identically to deck change — disabled mid-round, during countdown/reveal",
+        "Spectator: setSpectator socket event with rate-limit, server-side gate, actionFailed on reject",
+        "Spectator: isSpectator preserved across reconnects so F5 doesn't silently opt back into voting",
+        "Spectator: spectators excluded from voter count and auto-reveal trigger (unified with host opt-out)",
+        "Audit: user_spectator_toggled event logs username, clientId, previous + new state",
+    ],
     "1.4.8": [
         "UX: browser tab title reflects live vote progress (`N/M voted — Pokering Points`)",
         "UX: tab title switches to `Votes revealed` on reveal, restores default on round reset",

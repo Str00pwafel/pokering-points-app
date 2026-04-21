@@ -982,12 +982,14 @@ async def join(sid, data):
     # Detect reconnect: if clientId already present, replace old sid and preserve state
     preserved_vote = None
     preserved_wants_to_vote = None
+    preserved_is_spectator = None
     old_sid = None
     for existing_sid, u in sessions[session_id]["users"].items():
         if u.get("clientId") == client_id:
             old_sid = existing_sid
             preserved_vote = u.get("vote")
             preserved_wants_to_vote = u.get("wantsToVote")
+            preserved_is_spectator = u.get("isSpectator")
             break
     if old_sid:
         sessions[session_id]["users"].pop(old_sid, None)
@@ -1000,9 +1002,14 @@ async def join(sid, data):
             ip=ip_addr,
         )
 
-    # Spectator flag: host cannot be spectator. Plumbed for Phase 8 Spectator Mode;
-    # vote-eligibility enforcement arrives with that phase.
-    is_spectator = bool(data.get("isSpectator")) and not is_host
+    # Spectator flag: host cannot be spectator. Client-supplied value wins; otherwise
+    # preserve prior value across reconnects so F5/network drops don't silently opt back in.
+    is_spectator = False
+    if not is_host:
+        if isinstance(data.get("isSpectator"), bool):
+            is_spectator = data["isSpectator"]
+        elif preserved_is_spectator is not None:
+            is_spectator = bool(preserved_is_spectator)
 
     user_data = {
         "username": username,
@@ -1103,6 +1110,8 @@ async def vote(sid, data):
 
     user = sessions[session_id]["users"].get(sid)
     if user:
+        if user.get("isSpectator"):
+            return
         old_vote = user.get("vote")
         user["vote"] = value
         if old_vote is None:
@@ -1131,7 +1140,8 @@ async def vote(sid, data):
         users = [
             u
             for u in sessions[session_id]["users"].values()
-            if not (u.get("isHost") and u.get("wantsToVote") is False)
+            if not u.get("isSpectator")
+            and not (u.get("isHost") and u.get("wantsToVote") is False)
         ]
 
         all_voted = len(users) > 0 and all(u["vote"] is not None for u in users)
@@ -1404,6 +1414,69 @@ async def hostVotingDecision(sid, data):
             wants_to_vote=wants_to_vote,
         )
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
+
+
+@sio.event
+async def setSpectator(sid, data):
+    if not check_socket_rate_limit(sid, "setSpectator", limit=10, window=60):
+        return
+
+    if not isinstance(data, dict):
+        return
+
+    session_id = data.get("sessionId")
+    is_spectator = data.get("isSpectator")
+
+    if not isinstance(session_id, str) or not SESSION_ID_RE.fullmatch(session_id):
+        return
+    if not isinstance(is_spectator, bool):
+        return
+
+    session = sessions.get(session_id)
+    if session is None:
+        return
+
+    user = session["users"].get(sid)
+    if not user:
+        return
+
+    # Host uses hostVotingDecision; keep paths separate to avoid state-conflict bugs.
+    if user.get("isHost"):
+        await sio.emit(
+            "actionFailed",
+            {"action": "setSpectator", "reason": "Host manages voting opt-out separately"},
+            room=sid,
+        )
+        return
+
+    # Gate mirrors deck-change / setVotingEnabled: only between rounds with no votes cast,
+    # not during reveal, not mid-countdown.
+    has_votes = any(u.get("vote") is not None for u in session["users"].values())
+    if has_votes or session.get("revealed") or session.get("countdownActive"):
+        await sio.emit(
+            "actionFailed",
+            {"action": "setSpectator", "reason": "Cannot change spectator mode mid-round"},
+            room=sid,
+        )
+        return
+
+    old = bool(user.get("isSpectator"))
+    if old == is_spectator:
+        return  # no-op
+
+    user["isSpectator"] = is_spectator
+    if is_spectator:
+        user["vote"] = None  # defensive — gate should prevent this
+    audit(
+        "user_spectator_toggled",
+        session_id=session_id,
+        username=user.get("username"),
+        client_id=(user.get("clientId") or "")[:12],
+        previous=old,
+        is_spectator=is_spectator,
+    )
+
+    await sio.emit("usersUpdate", session["users"], room=session_id)
 
 
 @sio.event

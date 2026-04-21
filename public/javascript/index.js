@@ -221,6 +221,7 @@ window.addEventListener('load', () => {
 
   document.getElementById('newRoundBtn').addEventListener('click', startNewRound);
   document.getElementById('copyLinkBtn').addEventListener('click', copyLink);
+  document.getElementById('toggleSpectateBtn').addEventListener('click', toggleSpectate);
   document.getElementById('toggleVotingBtn').addEventListener('click', () => {
     if (votesRevealed) {
       const current = pendingVotingEnabled !== null ? pendingVotingEnabled : votingEnabled;
@@ -297,8 +298,15 @@ socket.on('deckChanged', ({ deckType }) => {
   }
 });
 
+function isUserSpectator(u) {
+  if (!u) return false;
+  return Boolean(u.isSpectator) || (u.isHost && u.wantsToVote === false);
+}
+
 function selectCard(element, value) {
   if (selectedCard || !votingEnabled) return;
+  const myUser = Object.values(currentUsers).find((u) => u.clientId === clientId);
+  if (isUserSpectator(myUser)) return;
 
   selectedCard = element;
   element.classList.add('selected');
@@ -308,6 +316,12 @@ function selectCard(element, value) {
   });
 
   socket.emit('vote', { sessionId, value });
+}
+
+function toggleSpectate() {
+  const myUser = Object.values(currentUsers).find((u) => u.clientId === clientId);
+  if (!myUser || myUser.isHost) return;
+  socket.emit('setSpectator', { sessionId, isSpectator: !myUser.isSpectator });
 }
 
 function startNewRound() {
@@ -381,15 +395,31 @@ function renderUserList() {
   const toggleBtn = document.getElementById('toggleVotingBtn');
   toggleBtn.style.display = isHost ? 'inline-block' : 'none';
 
+  const hasVotes = Object.values(users).some((u) => u.vote !== null);
+
   if (isHost) {
-    const hasVotes = Object.values(users).some((u) => u.vote !== null);
     document.getElementById('deckSelector').disabled = hasVotes || votesRevealed;
     toggleBtn.disabled = hasVotes && !votesRevealed;
     updateToggleBtnLabel();
   }
 
+  const spectateBtn = document.getElementById('toggleSpectateBtn');
+  if (myUser && !isHost) {
+    spectateBtn.style.display = 'inline-block';
+    spectateBtn.disabled = hasVotes || votesRevealed;
+    spectateBtn.textContent = myUser.isSpectator ? '🗳️ Join voting' : '👁 Spectate';
+    spectateBtn.setAttribute('aria-pressed', myUser.isSpectator ? 'true' : 'false');
+  } else {
+    spectateBtn.style.display = 'none';
+  }
+
+  const cardOpts = document.getElementById('cardOptions');
+  if (myUser) {
+    cardOpts.style.display = isUserSpectator(myUser) ? 'none' : '';
+  }
+
   const userList = Object.values(users);
-  const votingUsers = userList.filter((u) => !(u.isHost && u.wantsToVote === false));
+  const votingUsers = userList.filter((u) => !isUserSpectator(u));
   const selected = votingUsers.filter((u) => u.vote !== null).length;
   document.getElementById('status').innerText = `${selected} of ${votingUsers.length} selected`;
 
@@ -405,7 +435,7 @@ function renderUserList() {
   userListContent.innerHTML = '';
 
   userList.forEach((user) => {
-    const isSpectator = user.isHost && user.wantsToVote === false;
+    const isSpectator = isUserSpectator(user);
     const hasVoted = user.vote !== null;
 
     const row = document.createElement('div');
@@ -502,7 +532,7 @@ socket.on('revealVotes', ({ users, stats }) => {
 
   // Filter out users with null vote (late joiners joining at reveal state)
   const votingUsers = Object.values(users).filter(
-    (u) => u.vote !== null && !(u.isHost && u.wantsToVote === false)
+    (u) => u.vote !== null && !isUserSpectator(u)
   );
 
   const results = votingUsers
