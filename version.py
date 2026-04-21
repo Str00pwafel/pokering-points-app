@@ -6,6 +6,7 @@ __changelog__ = {
         "Vote: unselected cards dimmed after first pick; yellow dashed outline on hover signals swap available",
         "Vote: after vote change, all cards lock — second change rejected by server with actionFailed toast",
         "Vote: ↻ indicator next to username in user list flags users who changed their vote this round",
+        "Vote: toast broadcasts to every user when someone changes their vote",
         "State: voteChanged flag preserved across reconnects + reset on new round (server-authoritative)",
         "UX: number-key shortcuts now trigger swap on already-voted card (blocked after change used)",
     ],

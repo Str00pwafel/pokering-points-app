@@ -571,8 +571,12 @@ socket.on('userVoted', ({ clientId: votedId, voteChanged }) => {
   if (!votedId) return;
   const user = Object.values(currentUsers).find((u) => u.clientId === votedId);
   if (!user) return;
+  const firstFlag = voteChanged && !user.voteChanged;
   if (user.vote === null) user.vote = true;
   if (voteChanged) user.voteChanged = true;
+  if (firstFlag && votedId !== clientId) {
+    showToast(`${user.username} changed their vote`, 'info');
+  }
   renderUserList();
 });
 
