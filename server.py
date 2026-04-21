@@ -983,6 +983,7 @@ async def join(sid, data):
     preserved_vote = None
     preserved_wants_to_vote = None
     preserved_is_spectator = None
+    preserved_vote_changed = False
     old_sid = None
     for existing_sid, u in sessions[session_id]["users"].items():
         if u.get("clientId") == client_id:
@@ -990,6 +991,7 @@ async def join(sid, data):
             preserved_vote = u.get("vote")
             preserved_wants_to_vote = u.get("wantsToVote")
             preserved_is_spectator = u.get("isSpectator")
+            preserved_vote_changed = bool(u.get("voteChanged"))
             break
     if old_sid:
         sessions[session_id]["users"].pop(old_sid, None)
@@ -1017,6 +1019,7 @@ async def join(sid, data):
         "isHost": is_host,
         "isSpectator": is_spectator,
         "clientId": client_id,
+        "voteChanged": preserved_vote_changed,
     }
 
     if preserved_wants_to_vote is not None:
@@ -1113,11 +1116,23 @@ async def vote(sid, data):
         if user.get("isSpectator"):
             return
         old_vote = user.get("vote")
+        if old_vote == value:
+            return
+        if old_vote is not None and user.get("voteChanged"):
+            await sio.emit(
+                "actionFailed",
+                {"action": "vote", "reason": "Vote can only be changed once per round"},
+                room=sid,
+            )
+            return
+
         user["vote"] = value
         if old_vote is None:
             sessions[session_id]["totalVotes"] = sessions[session_id].get("totalVotes", 0) + 1
+        else:
+            user["voteChanged"] = True
 
-        if old_vote is not None and old_vote != value:
+        if old_vote is not None:
             audit(
                 "vote_changed",
                 session_id=session_id,
@@ -1127,7 +1142,7 @@ async def vote(sid, data):
                 previous=old_vote,
                 ip=socket_ip_map.get(sid),
             )
-        elif old_vote is None:
+        else:
             audit(
                 "vote_cast",
                 session_id=session_id,
@@ -1140,8 +1155,7 @@ async def vote(sid, data):
         users = [
             u
             for u in sessions[session_id]["users"].values()
-            if not u.get("isSpectator")
-            and not (u.get("isHost") and u.get("wantsToVote") is False)
+            if not u.get("isSpectator") and not (u.get("isHost") and u.get("wantsToVote") is False)
         ]
 
         all_voted = len(users) > 0 and all(u["vote"] is not None for u in users)
@@ -1150,7 +1164,10 @@ async def vote(sid, data):
         # Clients patch their local snapshot; real vote values arrive via revealVotes.
         await sio.emit(
             "userVoted",
-            {"clientId": user.get("clientId")},
+            {
+                "clientId": user.get("clientId"),
+                "voteChanged": bool(user.get("voteChanged")),
+            },
             room=session_id,
         )
 
@@ -1308,6 +1325,7 @@ async def requestNewRound(sid, data):
     votes_cleared = sum(1 for u in old_session["users"].values() if u.get("vote") is not None)
     for u in old_session["users"].values():
         u["vote"] = None
+        u["voteChanged"] = False
     old_session["revealed"] = False
     old_session.pop("voteStats", None)
     old_session["deck"] = list(DECK_PRESETS[deck_type])

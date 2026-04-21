@@ -1,6 +1,14 @@
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 
 __changelog__ = {
+    "1.5.1": [
+        "Vote: click a different card before reveal to change your vote (one change per round)",
+        "Vote: unselected cards dimmed after first pick; yellow dashed outline on hover signals swap available",
+        "Vote: after vote change, all cards lock — second change rejected by server with actionFailed toast",
+        "Vote: ↻ indicator next to username in user list flags users who changed their vote this round",
+        "State: voteChanged flag preserved across reconnects + reset on new round (server-authoritative)",
+        "UX: number-key shortcuts now trigger swap on already-voted card (blocked after change used)",
+    ],
     "1.5.0": [
         "Spectator: any user can toggle spectate on/off via always-visible button (was host-only)",
         "Spectator: toggle gated identically to deck change — disabled mid-round, during countdown/reveal",

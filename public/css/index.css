@@ -136,6 +136,25 @@ button:disabled {
     0 0 0 2px var(--success);
 }
 
+.card.vote-dimmed:not(.selected) {
+  opacity: 0.45;
+  filter: saturate(0.6);
+}
+
+.card.vote-swappable:not(.selected):not(:disabled) {
+  cursor: pointer;
+}
+
+.card.vote-swappable:not(.selected):not(:disabled):hover {
+  opacity: 0.9;
+  filter: saturate(1);
+  outline: 2px dashed #f5c518;
+  outline-offset: 3px;
+  box-shadow:
+    0 6px 12px rgba(245, 197, 24, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
 #countdown {
   font-size: 32px;
   margin-top: 20px;
@@ -539,6 +558,24 @@ button:disabled {
   font-size: 13px;
   font-weight: bold;
   flex-shrink: 0;
+}
+
+.user-vote-changed {
+  margin-left: auto;
+  color: #f5c518;
+  font-size: 14px;
+  font-weight: bold;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.user-row:has(.user-vote-chip) .user-vote-changed {
+  margin-left: auto;
+  margin-right: 6px;
+}
+
+.user-row:has(.user-vote-chip) .user-vote-chip {
+  margin-left: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -157,6 +157,7 @@ async function updateVersionBadge() {
 }
 
 let selectedCard = null;
+let hasChangedVote = false;
 
 const DEFAULT_TITLE = 'Pokering Points';
 function setDocTitle(prefix) {
@@ -304,18 +305,60 @@ function isUserSpectator(u) {
 }
 
 function selectCard(element, value) {
-  if (selectedCard || !votingEnabled) return;
+  if (votesRevealed || !votingEnabled) return;
   const myUser = Object.values(currentUsers).find((u) => u.clientId === clientId);
   if (isUserSpectator(myUser)) return;
+  if (selectedCard === element) return;
 
+  // First vote: select + emit, keep other cards clickable for one swap.
+  if (!selectedCard) {
+    selectedCard = element;
+    element.classList.add('selected');
+    applyVoteDimState();
+    socket.emit('vote', { sessionId, value });
+    return;
+  }
+
+  // Already voted — this is the 1 allowed change.
+  if (hasChangedVote) return;
+
+  selectedCard.classList.remove('selected');
   selectedCard = element;
   element.classList.add('selected');
-
-  document.querySelectorAll('.card').forEach((card) => {
-    card.disabled = true;
-  });
+  hasChangedVote = true;
+  applyVoteDimState();
 
   socket.emit('vote', { sessionId, value });
+}
+
+function applyVoteDimState() {
+  // States:
+  //   no selection → cards normal, enabled
+  //   selected (no change used) → non-selected dimmed but clickable (swap allowed)
+  //   change used → all non-selected locked + dimmed, selected highlighted
+  const cards = document.querySelectorAll('.card');
+  cards.forEach((c) => {
+    c.classList.remove('vote-dimmed', 'vote-swappable');
+    if (votesRevealed) {
+      c.disabled = true;
+      return;
+    }
+    if (!selectedCard) {
+      c.disabled = !votingEnabled;
+      return;
+    }
+    if (c === selectedCard) {
+      c.disabled = false;
+      return;
+    }
+    c.classList.add('vote-dimmed');
+    if (hasChangedVote) {
+      c.disabled = true;
+    } else {
+      c.disabled = !votingEnabled;
+      c.classList.add('vote-swappable');
+    }
+  });
 }
 
 function toggleSpectate() {
@@ -347,6 +390,7 @@ function copyLink() {
 
 socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
   selectedCard = null;
+  hasChangedVote = false;
   votesRevealed = false;
   pendingVotingEnabled = null;
   const votingChanged = votingEnabled !== enabled;
@@ -389,6 +433,21 @@ function renderUserList() {
   const users = currentUsers;
   const myUser = Object.values(users).find((u) => u.clientId === clientId);
   const isHost = myUser?.isHost;
+
+  // Sync vote-UI state from server-preserved data (covers mid-round reconnects).
+  if (myUser) {
+    if (myUser.voteChanged) hasChangedVote = true;
+    if (!selectedCard && !votesRevealed && myUser.vote !== null && myUser.vote !== true) {
+      const candidate = cardContainer.querySelector(
+        `.card[data-value="${CSS.escape(String(myUser.vote))}"]`
+      );
+      if (candidate) {
+        selectedCard = candidate;
+        candidate.classList.add('selected');
+        applyVoteDimState();
+      }
+    }
+  }
 
   document.getElementById('newRoundBtn').style.display = isHost ? 'inline-block' : 'none';
   document.getElementById('deckSelector').style.display = isHost ? 'inline-block' : 'none';
@@ -467,6 +526,15 @@ function renderUserList() {
       row.appendChild(badge);
     }
 
+    if (user.voteChanged && !isSpectator) {
+      const changed = document.createElement('span');
+      changed.className = 'user-vote-changed';
+      changed.textContent = '↻';
+      changed.title = 'Changed vote this round';
+      changed.setAttribute('aria-label', 'Changed vote');
+      row.appendChild(changed);
+    }
+
     if (votesRevealed && hasVoted && !isSpectator) {
       const chip = document.createElement('span');
       chip.className = 'user-vote-chip';
@@ -499,11 +567,12 @@ socket.on('usersUpdate', (users) => {
 
 // Diff event: vote cast/changed. Patches local snapshot; avoids full dict broadcast.
 // Real vote value arrives later via revealVotes (we use `true` as a "voted" sentinel).
-socket.on('userVoted', ({ clientId: votedId }) => {
+socket.on('userVoted', ({ clientId: votedId, voteChanged }) => {
   if (!votedId) return;
   const user = Object.values(currentUsers).find((u) => u.clientId === votedId);
   if (!user) return;
   if (user.vote === null) user.vote = true;
+  if (voteChanged) user.voteChanged = true;
   renderUserList();
 });
 
@@ -531,9 +600,7 @@ socket.on('revealVotes', ({ users, stats }) => {
   });
 
   // Filter out users with null vote (late joiners joining at reveal state)
-  const votingUsers = Object.values(users).filter(
-    (u) => u.vote !== null && !isUserSpectator(u)
-  );
+  const votingUsers = Object.values(users).filter((u) => u.vote !== null && !isUserSpectator(u));
 
   const results = votingUsers
     .map((u, i) => {
@@ -815,11 +882,8 @@ function updateVotingLockState() {
     });
   } else {
     lockEl.classList.add('hidden');
-    cards.forEach((c) => {
-      c.classList.remove('voting-locked');
-      // Leave disabled=true if reveal is active or this card isn't the selected one post-vote.
-      if (!votesRevealed && !selectedCard) c.disabled = false;
-    });
+    cards.forEach((c) => c.classList.remove('voting-locked'));
+    applyVoteDimState();
   }
   updateToggleBtnLabel();
 }
@@ -880,12 +944,15 @@ document.addEventListener('keydown', (e) => {
   }
 
   if (e.key >= '1' && e.key <= '9') {
-    if (votesRevealed || !votingEnabled || selectedCard) return;
+    if (votesRevealed || !votingEnabled) return;
+    if (selectedCard && hasChangedVote) return;
     const idx = parseInt(e.key, 10) - 1;
-    const cards = cardContainer.querySelectorAll('.card:not([disabled])');
+    const cards = cardContainer.querySelectorAll('.card');
     if (idx >= cards.length) return;
+    const target = cards[idx];
+    if (target.disabled) return;
     e.preventDefault();
-    cards[idx].click();
+    target.click();
   } else if (e.key === 'Enter') {
     if (tag === 'BUTTON' || tag === 'A') return;
     if (!votesRevealed) return;
