@@ -1,6 +1,19 @@
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 __changelog__ = {
+    "1.5.2": [
+        "Security: welcome-page version tooltip now HTML-escapes changelog items (XSS fix)",
+        "Security: modal username prefill no longer interpolated into HTML attribute",
+        "Correctness: client username regex synced to server (unicode letters/digits/spaces/-'_, max 30)",
+        "Audit: setVotingEnabled + hostVotingDecision events now include IP",
+        "Audit: audit() helper prefixes LogRecord-reserved keys with 'x_' so JSON mode preserves them",
+        "Cleanup: dropped unused /version/full endpoint and unread cleanup counters",
+        "Cleanup: /metrics switched from HTMLResponse to PlainTextResponse",
+        "Cleanup: logging.warning fallbacks routed through configured logger",
+        "Cleanup: inline HTML styles replaced with utility classes (.hidden, .controls-row, .emph-warning)",
+        "Cleanup: innerText replaced with textContent (avoids reflow)",
+        "Cleanup: cached myUser lookup — no more per-event Object.values().find() scans",
+    ],
     "1.5.1": [
         "Vote: click a different card before reveal to change your vote (one change per round)",
         "Vote: unselected cards dimmed after first pick; yellow dashed outline on hover signals swap available",

@@ -34,7 +34,16 @@ button:disabled {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
+}
+
+.controls-row {
+  margin-top: 10px;
+}
+
+.emph-warning {
+  color: var(--error);
+  font-weight: bold;
 }
 
 .card-options {

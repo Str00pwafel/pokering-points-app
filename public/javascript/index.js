@@ -104,8 +104,18 @@ function escapeHTML(str) {
   return div.innerHTML;
 }
 
+// Mirrors server's sanitize_username: strip control chars, then match
+// unicode letters/digits/spaces/hyphen/apostrophe/underscore, 1-30 chars.
+// Keep in sync with USERNAME_RE in server.py.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS_RE = /[\x00-\x1F\x7F]/g;
+const USERNAME_RE = /^[\p{L}\p{N}\s\-'_]{1,30}$/u;
+const USERNAME_MAX_LEN = 30;
+
 function isValidUsername(name) {
-  return /^[a-zA-Z]{1,20}$/.test(name);
+  if (typeof name !== 'string') return false;
+  const cleaned = name.replace(CONTROL_CHARS_RE, '').trim();
+  return USERNAME_RE.test(cleaned);
 }
 
 function postCreate() {
@@ -172,15 +182,15 @@ function promptUsername() {
       const errorEl = document.getElementById('modalError');
 
       if (!isValidUsername(name)) {
-        errorEl.textContent = 'Name must be letters only (max 20 characters).';
+        errorEl.textContent = "Name: letters, digits, spaces, - _ ' (max 30).";
         return;
       }
 
       errorEl.textContent = '';
-      username = name.slice(0, 20);
+      username = name.replace(CONTROL_CHARS_RE, '').trim().slice(0, USERNAME_MAX_LEN);
       sessionStorage.setItem('jiraPokerUsername', username);
       localStorage.setItem('jiraPokerUsername', username);
-      document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
+      document.getElementById('welcomeUser').textContent = `Welcome, ${username}!`;
       document.getElementById('mainContent').classList.remove('hidden');
 
       const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
@@ -205,7 +215,7 @@ window.addEventListener('load', () => {
   if (sessionUsername && isValidUsername(sessionUsername)) {
     username = sessionUsername;
     const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
-    document.getElementById('welcomeUser').innerText = `Welcome, ${username}!`;
+    document.getElementById('welcomeUser').textContent = `Welcome, ${username}!`;
     document.getElementById('mainContent').classList.remove('hidden');
 
     socket.emit('join', {
@@ -306,7 +316,6 @@ function isUserSpectator(u) {
 
 function selectCard(element, value) {
   if (votesRevealed || !votingEnabled) return;
-  const myUser = Object.values(currentUsers).find((u) => u.clientId === clientId);
   if (isUserSpectator(myUser)) return;
   if (selectedCard === element) return;
 
@@ -362,7 +371,6 @@ function applyVoteDimState() {
 }
 
 function toggleSpectate() {
-  const myUser = Object.values(currentUsers).find((u) => u.clientId === clientId);
   if (!myUser || myUser.isHost) return;
   socket.emit('setSpectator', { sessionId, isSpectator: !myUser.isSpectator });
 }
@@ -397,7 +405,7 @@ socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
   votingEnabled = enabled;
 
   document.querySelectorAll('.card').forEach((c) => c.classList.remove('selected'));
-  document.getElementById('countdown').innerText = '';
+  document.getElementById('countdown').textContent = '';
   document.getElementById('votesDisplay').innerHTML = '';
   document.getElementById('voteSummary').innerHTML = '';
 
@@ -428,10 +436,15 @@ function ensureConnectionIndicator() {
 }
 
 let currentUsers = {};
+let myUser = null;
+
+function refreshMyUser() {
+  myUser = Object.values(currentUsers).find((u) => u.clientId === clientId) || null;
+  return myUser;
+}
 
 function renderUserList() {
   const users = currentUsers;
-  const myUser = Object.values(users).find((u) => u.clientId === clientId);
   const isHost = myUser?.isHost;
 
   // Sync vote-UI state from server-preserved data (covers mid-round reconnects).
@@ -449,10 +462,10 @@ function renderUserList() {
     }
   }
 
-  document.getElementById('newRoundBtn').style.display = isHost ? 'inline-block' : 'none';
-  document.getElementById('deckSelector').style.display = isHost ? 'inline-block' : 'none';
+  document.getElementById('newRoundBtn').classList.toggle('hidden', !isHost);
+  document.getElementById('deckSelector').classList.toggle('hidden', !isHost);
   const toggleBtn = document.getElementById('toggleVotingBtn');
-  toggleBtn.style.display = isHost ? 'inline-block' : 'none';
+  toggleBtn.classList.toggle('hidden', !isHost);
 
   const hasVotes = Object.values(users).some((u) => u.vote !== null);
 
@@ -464,23 +477,23 @@ function renderUserList() {
 
   const spectateBtn = document.getElementById('toggleSpectateBtn');
   if (myUser && !isHost) {
-    spectateBtn.style.display = 'inline-block';
+    spectateBtn.classList.remove('hidden');
     spectateBtn.disabled = hasVotes || votesRevealed;
     spectateBtn.textContent = myUser.isSpectator ? '🗳️ Join voting' : '👁 Spectate';
     spectateBtn.setAttribute('aria-pressed', myUser.isSpectator ? 'true' : 'false');
   } else {
-    spectateBtn.style.display = 'none';
+    spectateBtn.classList.add('hidden');
   }
 
   const cardOpts = document.getElementById('cardOptions');
   if (myUser) {
-    cardOpts.style.display = isUserSpectator(myUser) ? 'none' : '';
+    cardOpts.classList.toggle('hidden', isUserSpectator(myUser));
   }
 
   const userList = Object.values(users);
   const votingUsers = userList.filter((u) => !isUserSpectator(u));
   const selected = votingUsers.filter((u) => u.vote !== null).length;
-  document.getElementById('status').innerText = `${selected} of ${votingUsers.length} selected`;
+  document.getElementById('status').textContent = `${selected} of ${votingUsers.length} selected`;
 
   const userCountEl = document.getElementById('userCount');
   if (userCountEl) userCountEl.textContent = `${selected}/${votingUsers.length} voted`;
@@ -549,14 +562,13 @@ function renderUserList() {
 socket.on('usersUpdate', (users) => {
   ensureConnectionIndicator();
   currentUsers = users;
-
-  const myUser = Object.values(users).find((u) => u.clientId === clientId);
+  refreshMyUser();
   const isHost = myUser?.isHost;
 
   if (isHost && !window.hostSettingsShown) {
     window.hostSettingsShown = true;
     if (myUser?.wantsToVote === false) {
-      document.getElementById('cardOptions').style.display = 'none';
+      document.getElementById('cardOptions').classList.add('hidden');
     } else if (myUser?.wantsToVote === undefined || myUser?.wantsToVote === null) {
       showHostSettingsModal();
     }
@@ -569,7 +581,8 @@ socket.on('usersUpdate', (users) => {
 // Real vote value arrives later via revealVotes (we use `true` as a "voted" sentinel).
 socket.on('userVoted', ({ clientId: votedId, voteChanged }) => {
   if (!votedId) return;
-  const user = Object.values(currentUsers).find((u) => u.clientId === votedId);
+  const user =
+    votedId === clientId ? myUser : Object.values(currentUsers).find((u) => u.clientId === votedId);
   if (!user) return;
   const firstFlag = voteChanged && !user.voteChanged;
   if (user.vote === null) user.vote = true;
@@ -581,7 +594,7 @@ socket.on('userVoted', ({ clientId: votedId, voteChanged }) => {
 });
 
 socket.on('countdown', (seconds) => {
-  document.getElementById('countdown').innerText = `Revealing in: ${seconds}`;
+  document.getElementById('countdown').textContent = `Revealing in: ${seconds}`;
   document.getElementById('toggleVotingBtn').disabled = true;
   document.getElementById('newRoundBtn').disabled = true;
   document.getElementById('newSessionBtn').disabled = true;
@@ -591,12 +604,13 @@ socket.on('countdown', (seconds) => {
 socket.on('revealVotes', ({ users, stats }) => {
   votesRevealed = true;
   currentUsers = users;
+  refreshMyUser();
   updateToggleBtnLabel();
   const toggleBtn = document.getElementById('toggleVotingBtn');
   toggleBtn.disabled = false;
   document.getElementById('newRoundBtn').disabled = false;
   document.getElementById('newSessionBtn').disabled = false;
-  document.getElementById('countdown').innerText = '';
+  document.getElementById('countdown').textContent = '';
 
   // Disable all cards once revealed (covers late joiners whose cards were still live)
   document.querySelectorAll('.card').forEach((c) => {
@@ -774,9 +788,16 @@ function showModal(
   const cancelBtn = document.getElementById('modalCancel');
   const errorEl = document.getElementById('modalError');
 
-  messageEl.innerHTML = withInput
-    ? `${message}<br><input type="text" id="modalInput" maxlength="20" value="${prefill}">`
-    : message;
+  messageEl.innerHTML = message;
+  if (withInput) {
+    messageEl.appendChild(document.createElement('br'));
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'modalInput';
+    input.maxLength = USERNAME_MAX_LEN;
+    input.value = prefill;
+    messageEl.appendChild(input);
+  }
   errorEl.textContent = '';
   cancelBtn.style.display = hideCancel ? 'none' : '';
 
@@ -816,7 +837,7 @@ function showModal(
     if (withInput) {
       const inputEl = document.getElementById('modalInput');
       if (!inputEl || !isValidUsername(inputEl.value.trim())) {
-        errorEl.textContent = 'Name must be letters only (max 20 characters).';
+        errorEl.textContent = "Name: letters, digits, spaces, - _ ' (max 30).";
         return;
       }
     }
@@ -927,7 +948,7 @@ function confirmHostSettings() {
   socket.emit('setVotingEnabled', { sessionId, votingEnabled: votingEnabledVal });
 
   if (!wantsToVote) {
-    document.getElementById('cardOptions').style.display = 'none';
+    document.getElementById('cardOptions').classList.add('hidden');
   }
 
   sessionStorage.setItem(`jiraPokerHostVoteDecision_${sessionId}`, String(wantsToVote));
@@ -961,7 +982,7 @@ document.addEventListener('keydown', (e) => {
     if (tag === 'BUTTON' || tag === 'A') return;
     if (!votesRevealed) return;
     const btn = document.getElementById('newRoundBtn');
-    if (!btn || btn.disabled || btn.style.display === 'none') return;
+    if (!btn || btn.disabled || btn.classList.contains('hidden')) return;
     e.preventDefault();
     startNewRound();
   }
@@ -972,7 +993,7 @@ document.getElementById('newSessionBtn').addEventListener('click', (e) => {
   showModal(
     'Start a new session?<br><br>' +
       'This will create a fresh session.<br>' +
-      "Currently connected users will <span style='color:red;font-weight:bold;'>NOT</span> be moved.",
+      'Currently connected users will <span class="emph-warning">NOT</span> be moved.',
     () => {
       Object.keys(sessionStorage)
         .filter((k) => k.startsWith('jiraPokerHostVoteDecision_'))

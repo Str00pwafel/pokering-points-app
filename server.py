@@ -17,7 +17,7 @@ import socketio
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from version import __changelog__, __version__
@@ -120,8 +120,15 @@ if LOG_FORMAT == "json":
 
 def audit(event, **fields):
     """Emit a structured audit event.
-    Text mode: 'event=X k=v k=v'. JSON mode: extras become top-level fields."""
-    clean = {k: v for k, v in fields.items() if v is not None}
+    Text mode: 'event=X k=v k=v'. JSON mode: extras become top-level fields.
+    Keys colliding with stdlib LogRecord attrs are prefixed with 'x_' so they
+    survive JSON-mode formatting (record.__dict__ iteration skips reserved keys)."""
+    clean = {}
+    for k, v in fields.items():
+        if v is None:
+            continue
+        safe_key = f"x_{k}" if k in _RESERVED_LOG_ATTRS else k
+        clean[safe_key] = v
     parts = [f"{k}={v}" for k, v in clean.items()]
     msg = f"event={event}" + (" " + " ".join(parts) if parts else "")
     logger.info(msg, extra={"event": event, **clean})
@@ -147,7 +154,7 @@ if ALLOW_CREDENTIALS and "*" in CORS_ORIGINS:
             "CORS misconfig: CORS_ORIGINS='*' with credentials enabled is invalid in production. "
             "Set CORS_ORIGINS to explicit origins (e.g., 'https://example.com')."
         )
-    logging.warning(
+    logger.warning(
         "CORS_ORIGINS='*' with credentials enabled — browsers will reject. "
         "Acceptable in development; set explicit origins for production."
     )
@@ -166,7 +173,7 @@ if _raw_whitelist:
             try:
                 RATE_LIMIT_WHITELIST.append(ipaddress.ip_network(entry, strict=False))
             except ValueError:
-                logging.warning(f"Invalid RATE_LIMIT_WHITELIST entry ignored: {entry}")
+                logger.warning(f"Invalid RATE_LIMIT_WHITELIST entry ignored: {entry}")
 
 
 def is_ip_whitelisted(ip_str):
@@ -266,18 +273,14 @@ async def session_cleanup():
             session = sessions.get(sid)
             if session is None:
                 continue
-            created = session.get("createdAt")
-            reason = (
-                "absolute_timeout"
-                if created and now - created > ABSOLUTE_TIMEOUT
-                else "idle_timeout"
-            )
-            duration_s = round((now - created).total_seconds(), 1) if created else None
+            # `createdAt` is guaranteed — sessions missing it were filtered out above.
+            created = session["createdAt"]
+            reason = "absolute_timeout" if now - created > ABSOLUTE_TIMEOUT else "idle_timeout"
             audit(
                 "session_ended",
                 session_id=sid,
                 reason=reason,
-                duration_s=duration_s,
+                duration_s=round((now - created).total_seconds(), 1),
                 round_count=session.get("roundCount", 0),
                 total_votes=session.get("totalVotes", 0),
                 remaining_users=len(session.get("users", {})),
@@ -361,28 +364,21 @@ async def rate_limit_cleanup():
         # create cooldown is 3s; short retention prevents unnecessary memory growth
         create_cutoff = now - timedelta(minutes=1)
 
-        removed_join = 0
         for ip in list(last_join_time.keys()):
             if last_join_time[ip] < join_cutoff:
                 del last_join_time[ip]
-                removed_join += 1
 
-        removed_create = 0
         for ip in list(last_create_time.keys()):
             if last_create_time[ip] < create_cutoff:
                 del last_create_time[ip]
-                removed_create += 1
 
-        # Clean up disconnected socket rate limits
-        removed_sockets = 0
+        # Clean up disconnected socket rate limits: drop entries with no recent activity.
         for sid in list(socket_rate_limits.keys()):
-            # Remove if no recent activity in any action
             if all(
                 not timestamps or (now - max(timestamps)) > timedelta(minutes=30)
                 for timestamps in socket_rate_limits[sid].values()
             ):
                 del socket_rate_limits[sid]
-                removed_sockets += 1
 
 
 # Log retention cleanup — deletes rotated log files older than LOG_RETENTION_DAYS.
@@ -659,14 +655,6 @@ async def get_version():
     }
 
 
-@app.get("/version/full")
-async def get_version_full():
-    return {
-        "version": __version__,
-        "changelog": __changelog__,
-    }
-
-
 @app.get("/theme")
 async def get_theme():
     """Get active theme based on current date"""
@@ -816,7 +804,7 @@ pokering_rate_limit_ips_join {len(last_join_time)}
 # TYPE pokering_rate_limit_ips_create gauge
 pokering_rate_limit_ips_create {len(last_create_time)}
 """
-    return HTMLResponse(content=metrics_text, media_type="text/plain")
+    return PlainTextResponse(content=metrics_text)
 
 
 @app.get("/javascript/vendor/socket.io.min.js")
@@ -1430,6 +1418,7 @@ async def hostVotingDecision(sid, data):
             session_id=session_id,
             host=user.get("username", "unknown"),
             wants_to_vote=wants_to_vote,
+            ip=socket_ip_map.get(sid),
         )
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
 
@@ -1540,6 +1529,7 @@ async def setVotingEnabled(sid, data):
         "voting_unlocked" if voting_enabled else "voting_locked",
         session_id=session_id,
         host=user.get("username", "unknown"),
+        ip=socket_ip_map.get(sid),
     )
 
     await sio.emit("sessionState", {"votingEnabled": voting_enabled}, room=session_id)

@@ -13,7 +13,7 @@
   </head>
   <body>
     <button id="newSessionBtn">🔁 New Session</button>
-    <select id="deckSelector" style="display: none">
+    <select id="deckSelector" class="hidden">
       <option value="fibonacci">Fibonacci (1-21)</option>
       <option value="hours">Hours (1-40)</option>
       <option value="tshirt">T-Shirt (XS-XXL)</option>
@@ -29,10 +29,10 @@
     <div id="mainContent" class="flex-container hidden">
       <div id="pokerScreen" class="container">
         <h1 id="welcomeUser"></h1>
-        <div style="margin-top: 10px">
-          <button id="newRoundBtn" style="display: none">➡️ Start New Round</button>
-          <button id="toggleVotingBtn" style="display: none">🔒 Unlock Voting</button>
-          <button id="toggleSpectateBtn" style="display: none">👁 Spectate</button>
+        <div class="controls-row">
+          <button id="newRoundBtn" class="hidden">➡️ Start New Round</button>
+          <button id="toggleVotingBtn" class="hidden">🔒 Unlock Voting</button>
+          <button id="toggleSpectateBtn" class="hidden">👁 Spectate</button>
           <button id="copyLinkBtn">🔗 Copy Session Link</button>
         </div>
         <h2>Pick your estimate</h2>
