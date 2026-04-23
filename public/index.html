@@ -28,7 +28,10 @@
     <div id="versionTooltip" class="version-tooltip"></div>
     <div id="mainContent" class="flex-container hidden">
       <div id="pokerScreen" class="container">
-        <h1 id="welcomeUser"></h1>
+        <div class="welcome-row">
+          <h1 id="welcomeUser"></h1>
+          <button id="editUsernameBtn" aria-label="Edit username" title="Edit username">✏️</button>
+        </div>
         <div class="controls-row">
           <button id="newRoundBtn" class="hidden">➡️ Start New Round</button>
           <button id="toggleVotingBtn" class="hidden">🔒 Unlock Voting</button>
@@ -71,6 +74,10 @@
       <div id="hostSettingsContent" class="host-settings-content">
         <h3 id="hostSettingsTitle">Session Settings</h3>
         <p class="host-settings-subtitle">You are the host. Configure before joining.</p>
+        <div id="hostUsernameRow" class="host-username-row hidden">
+          <input type="text" id="hostUsernameInput" maxlength="30" placeholder="Your name" autocomplete="off" />
+          <div id="hostUsernameError" class="error-message"></div>
+        </div>
         <div class="toggle-row">
           <span>Join voting</span>
           <label class="toggle-switch">

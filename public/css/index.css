@@ -629,6 +629,62 @@ button:disabled {
   margin-bottom: 24px;
 }
 
+/* ── Welcome row (username + edit pencil) ──────────────────── */
+.welcome-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.welcome-row h1 {
+  margin: 0;
+}
+
+#editUsernameBtn {
+  padding: 4px 8px;
+  font-size: 14px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  opacity: 0.55;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+#editUsernameBtn:hover:not(:disabled) {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Host settings — creator username row ──────────────────── */
+.host-username-row {
+  margin-bottom: 16px;
+}
+
+.host-username-row input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 15px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.host-username-row input:focus {
+  outline: 2px solid var(--primary-action);
+}
+
+.host-username-row .error-message {
+  color: var(--error);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
 /* ── Toggle switch ─────────────────────────────────────────── */
 .toggle-switch {
   position: relative;

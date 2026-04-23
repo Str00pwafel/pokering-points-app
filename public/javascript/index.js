@@ -210,9 +210,67 @@ function promptUsername() {
 }
 
 window.addEventListener('load', () => {
-  // If username is in sessionStorage, this is a redirect (new round) - join directly
+  updateVersionBadge();
+
+  document.getElementById('newRoundBtn').addEventListener('click', startNewRound);
+  document.getElementById('copyLinkBtn').addEventListener('click', copyLink);
+  document.getElementById('toggleSpectateBtn').addEventListener('click', toggleSpectate);
+  document.getElementById('editUsernameBtn').addEventListener('click', () => {
+    showModal(
+      'Change your username:',
+      () => {
+        const name = document.getElementById('modalInput').value.trim();
+        username = name.replace(CONTROL_CHARS_RE, '').trim().slice(0, USERNAME_MAX_LEN);
+        sessionStorage.setItem('jiraPokerUsername', username);
+        localStorage.setItem('jiraPokerUsername', username);
+        document.getElementById('welcomeUser').textContent = `Welcome, ${username}!`;
+        const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
+        socket.emit('join', {
+          sessionId,
+          username,
+          clientId,
+          deckType: currentDeckType,
+          wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
+        });
+      },
+      true,
+      false,
+      false,
+      username
+    );
+  });
+  document.getElementById('hostUsernameInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('hostSettingsConfirm').click();
+    }
+  });
+  document.getElementById('toggleVotingBtn').addEventListener('click', () => {
+    if (votesRevealed) {
+      const current = pendingVotingEnabled !== null ? pendingVotingEnabled : votingEnabled;
+      pendingVotingEnabled = !current;
+      updateToggleBtnLabel();
+    } else {
+      socket.emit('setVotingEnabled', { sessionId, votingEnabled: !votingEnabled });
+    }
+  });
+  document.getElementById('hostLeftNewSession').addEventListener('click', () => {
+    sessionStorage.setItem('pokeringIsCreator', '1');
+    postCreate();
+  });
+  document.getElementById('hostSettingsConfirm').addEventListener('click', confirmHostSettings);
+
+  const isCreator = sessionStorage.getItem('pokeringIsCreator') === '1';
   const sessionUsername = sessionStorage.getItem('jiraPokerUsername');
-  if (sessionUsername && isValidUsername(sessionUsername)) {
+
+  if (isCreator) {
+    sessionStorage.removeItem('pokeringIsCreator');
+    window.hostSettingsShown = true;
+    if (sessionUsername && isValidUsername(sessionUsername)) {
+      username = sessionUsername;
+    }
+    showHostSettingsModal(true);
+  } else if (sessionUsername && isValidUsername(sessionUsername)) {
     username = sessionUsername;
     const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
     document.getElementById('welcomeUser').textContent = `Welcome, ${username}!`;
@@ -228,24 +286,6 @@ window.addEventListener('load', () => {
   } else {
     promptUsername();
   }
-  updateVersionBadge();
-
-  document.getElementById('newRoundBtn').addEventListener('click', startNewRound);
-  document.getElementById('copyLinkBtn').addEventListener('click', copyLink);
-  document.getElementById('toggleSpectateBtn').addEventListener('click', toggleSpectate);
-  document.getElementById('toggleVotingBtn').addEventListener('click', () => {
-    if (votesRevealed) {
-      const current = pendingVotingEnabled !== null ? pendingVotingEnabled : votingEnabled;
-      pendingVotingEnabled = !current;
-      updateToggleBtnLabel();
-    } else {
-      socket.emit('setVotingEnabled', { sessionId, votingEnabled: !votingEnabled });
-    }
-  });
-  document.getElementById('hostLeftNewSession').addEventListener('click', () => {
-    postCreate();
-  });
-  document.getElementById('hostSettingsConfirm').addEventListener('click', confirmHostSettings);
 });
 
 const DECK_PRESETS = {
@@ -463,7 +503,7 @@ function renderUserList() {
   }
 
   document.getElementById('newRoundBtn').classList.toggle('hidden', !isHost);
-  document.getElementById('deckSelector').classList.toggle('hidden', !isHost);
+  document.getElementById('deckSelector').classList.remove('hidden');
   const toggleBtn = document.getElementById('toggleVotingBtn');
   toggleBtn.classList.toggle('hidden', !isHost);
 
@@ -473,6 +513,8 @@ function renderUserList() {
     document.getElementById('deckSelector').disabled = hasVotes || votesRevealed;
     toggleBtn.disabled = hasVotes && !votesRevealed;
     updateToggleBtnLabel();
+  } else {
+    document.getElementById('deckSelector').disabled = true;
   }
 
   const spectateBtn = document.getElementById('toggleSpectateBtn');
@@ -928,13 +970,44 @@ function updateToggleBtnLabel() {
 // ── Host settings modal ───────────────────────────────────────────────────────
 let releaseHostSettingsFocus = null;
 
-function showHostSettingsModal() {
+function showHostSettingsModal(withUsername = false) {
+  const usernameRow = document.getElementById('hostUsernameRow');
+  if (withUsername) {
+    usernameRow.classList.remove('hidden');
+    const input = document.getElementById('hostUsernameInput');
+    input.value = username;
+    document.getElementById('hostUsernameError').textContent = '';
+  } else {
+    usernameRow.classList.add('hidden');
+  }
   const backdrop = document.getElementById('hostSettingsBackdrop');
   backdrop.classList.remove('hidden');
   releaseHostSettingsFocus = trapFocus(document.getElementById('hostSettingsContent'));
+  if (withUsername) {
+    const input = document.getElementById('hostUsernameInput');
+    if (input) input.focus();
+  }
 }
 
 function confirmHostSettings() {
+  const usernameRow = document.getElementById('hostUsernameRow');
+  const isCreatorFlow = usernameRow && !usernameRow.classList.contains('hidden');
+
+  if (isCreatorFlow) {
+    const nameInput = document.getElementById('hostUsernameInput');
+    const name = nameInput ? nameInput.value.trim() : '';
+    if (!isValidUsername(name)) {
+      document.getElementById('hostUsernameError').textContent =
+        "Name: letters, digits, spaces, - _ ' (max 30).";
+      return;
+    }
+    username = name.replace(CONTROL_CHARS_RE, '').trim().slice(0, USERNAME_MAX_LEN);
+    sessionStorage.setItem('jiraPokerUsername', username);
+    localStorage.setItem('jiraPokerUsername', username);
+    document.getElementById('welcomeUser').textContent = `Welcome, ${username}!`;
+    document.getElementById('mainContent').classList.remove('hidden');
+  }
+
   const wantsToVote = document.getElementById('toggleJoinVoting').checked;
   const votingEnabledVal = document.getElementById('toggleVotingEnabled').checked;
 
@@ -942,6 +1015,16 @@ function confirmHostSettings() {
   if (releaseHostSettingsFocus) {
     releaseHostSettingsFocus();
     releaseHostSettingsFocus = null;
+  }
+
+  if (isCreatorFlow) {
+    socket.emit('join', {
+      sessionId,
+      username,
+      clientId,
+      deckType: currentDeckType,
+      wantsToVote,
+    });
   }
 
   socket.emit('hostVotingDecision', { sessionId, wantsToVote });
@@ -998,6 +1081,7 @@ document.getElementById('newSessionBtn').addEventListener('click', (e) => {
       Object.keys(sessionStorage)
         .filter((k) => k.startsWith('jiraPokerHostVoteDecision_'))
         .forEach((k) => sessionStorage.removeItem(k));
+      sessionStorage.setItem('pokeringIsCreator', '1');
       postCreate();
     }
   );

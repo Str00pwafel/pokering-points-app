@@ -1,6 +1,11 @@
-__version__ = "1.5.2"
+__version__ = "1.5.3"
 
 __changelog__ = {
+    "1.5.3": [
+        "UX: pencil icon next to welcome line — click to rename yourself mid-session",
+        "UX: deck selector now visible to all users (disabled for guests) so everyone sees which deck is active",
+        "UX: session creators see one combined modal (username + host settings) instead of two separate steps",
+    ],
     "1.5.2": [
         "Security: welcome-page version tooltip now HTML-escapes changelog items (XSS fix)",
         "Security: modal username prefill no longer interpolated into HTML attribute",

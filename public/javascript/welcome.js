@@ -7,6 +7,7 @@ window.addEventListener('unhandledrejection', (e) => {
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('startSessionBtn').addEventListener('click', () => {
+    sessionStorage.setItem('pokeringIsCreator', '1');
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '/create';
