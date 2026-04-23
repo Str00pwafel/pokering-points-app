@@ -190,7 +190,7 @@ function promptUsername() {
       username = name.replace(CONTROL_CHARS_RE, '').trim().slice(0, USERNAME_MAX_LEN);
       sessionStorage.setItem('jiraPokerUsername', username);
       localStorage.setItem('jiraPokerUsername', username);
-      document.getElementById('welcomeUser').textContent = `Welcome, ${username}!`;
+
       document.getElementById('mainContent').classList.remove('hidden');
 
       const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
@@ -215,30 +215,6 @@ window.addEventListener('load', () => {
   document.getElementById('newRoundBtn').addEventListener('click', startNewRound);
   document.getElementById('copyLinkBtn').addEventListener('click', copyLink);
   document.getElementById('toggleSpectateBtn').addEventListener('click', toggleSpectate);
-  document.getElementById('editUsernameBtn').addEventListener('click', () => {
-    showModal(
-      'Change your username:',
-      () => {
-        const name = document.getElementById('modalInput').value.trim();
-        username = name.replace(CONTROL_CHARS_RE, '').trim().slice(0, USERNAME_MAX_LEN);
-        sessionStorage.setItem('jiraPokerUsername', username);
-        localStorage.setItem('jiraPokerUsername', username);
-        document.getElementById('welcomeUser').textContent = `Welcome, ${username}!`;
-        const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
-        socket.emit('join', {
-          sessionId,
-          username,
-          clientId,
-          deckType: currentDeckType,
-          wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
-        });
-      },
-      true,
-      false,
-      false,
-      username
-    );
-  });
   document.getElementById('hostUsernameInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -273,7 +249,6 @@ window.addEventListener('load', () => {
   } else if (sessionUsername && isValidUsername(sessionUsername)) {
     username = sessionUsername;
     const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
-    document.getElementById('welcomeUser').textContent = `Welcome, ${username}!`;
     document.getElementById('mainContent').classList.remove('hidden');
 
     socket.emit('join', {
@@ -421,6 +396,31 @@ function startNewRound() {
     payload.votingEnabled = pendingVotingEnabled;
   }
   socket.emit('requestNewRound', payload);
+}
+
+function promptRename() {
+  showModal(
+    'Change your username:',
+    () => {
+      const name = document.getElementById('modalInput').value.trim();
+      username = name.replace(CONTROL_CHARS_RE, '').trim().slice(0, USERNAME_MAX_LEN);
+      sessionStorage.setItem('jiraPokerUsername', username);
+      localStorage.setItem('jiraPokerUsername', username);
+      showToast(`Username changed to "${username}"`, 'success');
+      const hostVoteDecision = sessionStorage.getItem(`jiraPokerHostVoteDecision_${sessionId}`);
+      socket.emit('join', {
+        sessionId,
+        username,
+        clientId,
+        deckType: currentDeckType,
+        wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
+      });
+    },
+    true,
+    false,
+    false,
+    username
+  );
 }
 
 function copyLink() {
@@ -573,6 +573,17 @@ function renderUserList() {
     row.appendChild(status);
     row.appendChild(nameSpan);
 
+    if (user.clientId === clientId) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'user-edit-btn';
+      editBtn.textContent = '✏️';
+      editBtn.title = 'Edit username';
+      editBtn.setAttribute('aria-label', 'Edit username');
+      editBtn.disabled = votesRevealed || hasVoted;
+      editBtn.addEventListener('click', promptRename);
+      row.appendChild(editBtn);
+    }
+
     if (user.isHost) {
       const badge = document.createElement('span');
       badge.className = 'user-badge host';
@@ -641,6 +652,7 @@ socket.on('countdown', (seconds) => {
   document.getElementById('newRoundBtn').disabled = true;
   document.getElementById('newSessionBtn').disabled = true;
   document.getElementById('deckSelector').disabled = true;
+  document.querySelectorAll('.user-edit-btn').forEach((b) => (b.disabled = true));
 });
 
 socket.on('revealVotes', ({ users, stats }) => {
@@ -1004,7 +1016,6 @@ function confirmHostSettings() {
     username = name.replace(CONTROL_CHARS_RE, '').trim().slice(0, USERNAME_MAX_LEN);
     sessionStorage.setItem('jiraPokerUsername', username);
     localStorage.setItem('jiraPokerUsername', username);
-    document.getElementById('welcomeUser').textContent = `Welcome, ${username}!`;
     document.getElementById('mainContent').classList.remove('hidden');
   }
 

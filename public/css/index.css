@@ -630,30 +630,20 @@ button:disabled {
 }
 
 /* ── Welcome row (username + edit pencil) ──────────────────── */
-.welcome-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.welcome-row h1 {
-  margin: 0;
-}
-
-#editUsernameBtn {
-  padding: 4px 8px;
-  font-size: 14px;
+.user-edit-btn {
+  margin-left: auto;
+  padding: 2px 6px;
+  font-size: 12px;
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: pointer;
   flex-shrink: 0;
   line-height: 1;
 }
 
-#editUsernameBtn:hover:not(:disabled) {
+.user-edit-btn:hover:not(:disabled) {
   opacity: 1;
   background: rgba(255, 255, 255, 0.1);
 }

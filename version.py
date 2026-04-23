@@ -2,7 +2,10 @@ __version__ = "1.5.3"
 
 __changelog__ = {
     "1.5.3": [
-        "UX: pencil icon next to welcome line — click to rename yourself mid-session",
+        "UX: pencil icon on your own user-list row — click to rename yourself mid-session",
+        "UX: rename blocked while you have voted or during countdown",
+        "UX: toast confirms the new name after rename",
+        "UX: removed redundant 'Welcome, <name>' heading — name visible in user list",
         "UX: deck selector now visible to all users (disabled for guests) so everyone sees which deck is active",
         "UX: session creators see one combined modal (username + host settings) instead of two separate steps",
     ],
