@@ -17,12 +17,12 @@ Built with FastAPI + Socket.IO backend and vanilla JavaScript frontend.
 
 ```mermaid
 flowchart LR
-    Client[Browser<br/>vanilla JS + Socket.IO client] -- HTTP --> FastAPI
+    Client[Browser<br/>vanilla JS ES modules + Socket.IO client] -- HTTP --> FastAPI
     Client <-- WebSocket --> SocketIO
-    subgraph Server [server.py ASGI app]
-        FastAPI[FastAPI<br/>routes: /, /create, /session/:id,<br/>/health, /metrics, /theme, /version]
-        SocketIO[Socket.IO AsyncServer<br/>events: join, vote, changeDeck,<br/>requestNewRound, setVotingEnabled]
-        State[(In-memory state<br/>sessions dict<br/>socket_ip_map<br/>rate-limit dicts)]
+    subgraph Server [app/ package]
+        FastAPI[app/routes.py<br/>FastAPI routes: /, /create, /session/:id,<br/>/health, /metrics, /theme, /version, /decks]
+        SocketIO[app/sockets.py<br/>Socket.IO events: join, vote, changeDeck,<br/>requestNewRound, setVotingEnabled, setSpectator]
+        State[(app/state.py<br/>sessions dict<br/>socket_ip_map<br/>rate-limit dicts)]
         Tasks[Background tasks<br/>session_cleanup<br/>rate_limit_cleanup<br/>log_retention_cleanup]
         FastAPI --> State
         SocketIO --> State
@@ -74,20 +74,21 @@ Host can switch decks before any votes are cast.
 
 All optional. Defaults work out of the box for local development.
 
-| Variable                 | Default       | Description                                                                                                               |
-| ------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `SERVER_HOST`            | `0.0.0.0`     | Bind address                                                                                                              |
-| `SERVER_PORT`            | `8000`        | Port                                                                                                                      |
-| `ENVIRONMENT`            | `development` | Set `production` to disable auto-reload                                                                                   |
-| `CORS_ORIGINS`           | `*`           | Comma-separated allowed origins                                                                                           |
-| `TRUST_PROXY`            | `false`       | Enable `X-Forwarded-For` IP parsing (set `true` behind nginx/Caddy)                                                       |
-| `PROXY_DEPTH`            | `1`           | Number of reverse proxies in front; picks Nth-from-right hop of `X-Forwarded-For`. Only effective when `TRUST_PROXY=true` |
-| `LOG_DIR`                | `logs`        | Directory for audit log files                                                                                             |
-| `LOG_MAX_BYTES`          | `5242880`     | Max size per log file (bytes, default 5MB)                                                                                |
-| `LOG_BACKUP_COUNT`       | `3`           | Number of rotated log files to keep                                                                                       |
-| `LOG_RETENTION_DAYS`     | `30`          | Delete rotated log files older than N days. `0` disables                                                                  |
-| `RATE_LIMIT_WHITELIST`   | _(empty)_     | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`)                                     |
-| `MAX_RATE_LIMIT_ENTRIES` | `10000`       | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded                                                |
+| Variable                 | Default            | Description                                                                                                               |
+| ------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `SERVER_HOST`            | `0.0.0.0`          | Bind address                                                                                                              |
+| `SERVER_PORT`            | `8000`             | Port                                                                                                                      |
+| `ENVIRONMENT`            | `development`      | Set `production` to disable auto-reload                                                                                   |
+| `CORS_ORIGINS`           | `*`                | Comma-separated allowed origins                                                                                           |
+| `TRUST_PROXY`            | `false`            | Enable `X-Forwarded-For` IP parsing (set `true` behind nginx/Caddy)                                                       |
+| `PROXY_DEPTH`            | `1`                | Number of reverse proxies in front; picks Nth-from-right hop of `X-Forwarded-For`. Only effective when `TRUST_PROXY=true` |
+| `LOG_DIR`                | `logs`             | Directory for audit log files                                                                                             |
+| `LOG_MAX_BYTES`          | `5242880`          | Max size per log file (bytes, default 5MB)                                                                                |
+| `LOG_BACKUP_COUNT`       | `3`                | Number of rotated log files to keep                                                                                       |
+| `LOG_RETENTION_DAYS`     | `30`               | Delete rotated log files older than N days. `0` disables                                                                  |
+| `RATE_LIMIT_WHITELIST`   | _(empty)_          | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`)                                     |
+| `MAX_RATE_LIMIT_ENTRIES` | `10000`            | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded                                                |
+| `THEME_TZ`               | `Europe/Amsterdam` | Timezone for date-based theme schedule (IANA tz name)                                                                     |
 
 No API keys or database credentials needed.
 

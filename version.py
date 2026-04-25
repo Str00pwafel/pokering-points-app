@@ -1,6 +1,15 @@
-__version__ = "1.5.3"
+__version__ = "2.0.0"
 
 __changelog__ = {
+    "2.0.0": [
+        "Refactor: server.py split into app/ package (config, logging_setup, state, rate_limit, core, routes, sockets)",
+        "Refactor: index.js split into 8 ES modules (state, connection, cards, ui, host, modal, toast, utils)",
+        "Feature: /decks endpoint — deck presets served from server, fetched on load (config in one place)",
+        "Feature: THEME_TZ env var — timezone-aware theme date matching via zoneinfo",
+        "Feature: gameplay metrics counters — pokering_votes_total, pokering_reveals_total, pokering_countdown_active in /metrics",
+        "Storage: sessionStorage/localStorage keys migrated from jiraPoker* to pokering* (one-time on load)",
+        "DX: index.html switched to ES module script tag; eslint updated to sourceType: module",
+    ],
     "1.5.3": [
         "UX: pencil icon on your own user-list row — click to rename yourself mid-session",
         "UX: rename blocked while you have voted or during countdown",
