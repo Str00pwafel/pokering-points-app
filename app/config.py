@@ -40,18 +40,33 @@ THEME_TZ: str = os.getenv("THEME_TZ", "Europe/Amsterdam")
 # Prevents memory growth under IPv6 flood
 MAX_RATE_LIMIT_ENTRIES: int = int(os.getenv("MAX_RATE_LIMIT_ENTRIES", "10000"))
 
+_config_logger = logging.getLogger(__name__)
+
 # Comma-separated IPs or CIDR ranges (e.g. "192.168.1.0/24,10.0.0.1")
 _raw_whitelist: str = os.getenv("RATE_LIMIT_WHITELIST", "").strip()
 RATE_LIMIT_WHITELIST: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
 if _raw_whitelist:
-    _logger = logging.getLogger(__name__)
     for _entry in _raw_whitelist.split(","):
         _entry = _entry.strip()
         if _entry:
             try:
                 RATE_LIMIT_WHITELIST.append(ipaddress.ip_network(_entry, strict=False))
             except ValueError:
-                _logger.warning(f"Invalid RATE_LIMIT_WHITELIST entry ignored: {_entry}")
+                _config_logger.warning(f"Invalid RATE_LIMIT_WHITELIST entry ignored: {_entry}")
+
+# Comma-separated IPs or CIDR ranges of trusted reverse proxies.
+# Only honoured when TRUST_PROXY=true. If empty, all peers are trusted (backward compat).
+# Set this to your proxy's IP(s) to prevent XFF spoofing from direct clients.
+_raw_trusted_proxies: str = os.getenv("TRUSTED_PROXY_IPS", "").strip()
+TRUSTED_PROXY_IPS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+if _raw_trusted_proxies:
+    for _entry in _raw_trusted_proxies.split(","):
+        _entry = _entry.strip()
+        if _entry:
+            try:
+                TRUSTED_PROXY_IPS.append(ipaddress.ip_network(_entry, strict=False))
+            except ValueError:
+                _config_logger.warning(f"Invalid TRUSTED_PROXY_IPS entry ignored: {_entry}")
 
 # ---------------------------------------------------------------------------
 # Session limits & timeouts
@@ -129,3 +144,10 @@ if ALLOW_CREDENTIALS and "*" in CORS_ORIGINS:
 # Misc constants
 # ---------------------------------------------------------------------------
 CHANGELOG_EXPANDED_COUNT: int = 5  # most-recent N versions start expanded; older collapsed
+
+# ---------------------------------------------------------------------------
+# Metrics auth
+# ---------------------------------------------------------------------------
+# Set to a non-empty value to require "Authorization: Bearer <token>" on /health and /metrics.
+# Leave empty to keep endpoints open (backward compat).
+METRICS_TOKEN: str = os.getenv("METRICS_TOKEN", "").strip()

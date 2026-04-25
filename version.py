@@ -2,6 +2,23 @@ __version__ = "2.0.0"
 
 __changelog__ = {
     "2.0.0": [
+        "Security: X-Request-ID header sanitised — non-alphanumeric characters stripped, capped at 32 chars to prevent log injection",
+        "Security: modal innerHTML replaced with textContent by default; allowHtml=true required for trusted static strings",
+        "Security: /health and /metrics require Authorization: Bearer <METRICS_TOKEN> when METRICS_TOKEN env var is set",
+        "Security: /healthz public liveness probe added — safe for load-balancer checks without exposing sensitive data",
+        "Security: socket_rate_limits uses LRU ordering — attackers can no longer flood new keys to evict legitimate entries",
+        "Security: max_http_buffer_size lowered from 1 MB to 64 KB — reduces memory amplification from oversized Socket.IO frames",
+        "Fix: duplicate userLeft/hostLeft events on rapid disconnect-reconnect-disconnect cycle eliminated via _pending_leave_tasks dedup",
+        "Security: reconnect tokens — server issues token_urlsafe(32) on first join; rejoin requires matching token, preventing clientId impersonation",
+        "Security: socket rate limits keyed by IP instead of SID — reconnection no longer resets the window",
+        "Security: TRUSTED_PROXY_IPS env var — XFF only trusted when TCP peer is in the configured allowlist",
+        "Security: Socket.IO AsyncServer now receives cors_credentials=ALLOW_CREDENTIALS explicitly",
+        "Fix: countdown_active gauge stuck at 1 when requestNewRound cancels countdown task — try/except CancelledError + finally",
+        "Fix: float votes normalised to int before storage; bool inputs and non-finite floats rejected at socket boundary",
+        "Fix: changeDeck and join store list() copy of deck preset instead of shared reference",
+        "Fix: voteChanged flag cleared on requestNewRound so first vote of new round is not flagged as a change",
+        "Fix: TRUSTED_PROXY_IPS peer check also applied in Socket.IO connect handler",
+        "Fix: userJoined no longer sends clientId to room; skip_sid prevents self-toast without clientId comparison",
         "Refactor: server.py split into app/ package (config, logging_setup, state, rate_limit, core, routes, sockets)",
         "Refactor: index.js split into 8 ES modules (state, connection, cards, ui, host, modal, toast, utils)",
         "Feature: /decks endpoint — deck presets served from server, fetched on load (config in one place)",

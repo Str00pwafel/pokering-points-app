@@ -39,12 +39,14 @@ export function ensureConnectionIndicator() {
 export function rejoinSession() {
   if (!S.username) return;
   const hostVoteDecision = sessionStorage.getItem(`pokeringHostVoteDecision_${sessionId}`);
+  const reconnectToken = sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`);
   socket.emit('join', {
     sessionId,
     username: S.username,
     clientId: S.clientId,
     deckType: S.currentDeckType,
     wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
+    reconnectToken: reconnectToken || undefined,
   });
 }
 
@@ -69,4 +71,11 @@ socket.on('disconnect', () => {
 socket.io.on('reconnect_attempt', () => {
   connectionStatus = 'reconnecting';
   updateConnectionIndicator();
+});
+
+// Store the server-issued reconnect token privately so it can be sent on rejoin.
+socket.on('reconnectToken', ({ token }) => {
+  if (token && sessionId) {
+    sessionStorage.setItem(`pokeringReconnectToken_${sessionId}`, token);
+  }
 });

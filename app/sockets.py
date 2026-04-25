@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import math
+import secrets
 from datetime import datetime, timezone
 
 import app.state as _state
@@ -13,10 +15,21 @@ from app.config import (
 )
 from app.core import sio
 from app.logging_setup import audit
-from app.rate_limit import _bound_dict, check_socket_rate_limit, is_ip_whitelisted
+from app.rate_limit import (
+    _bound_dict,
+    _is_peer_trusted,
+    _pick_forwarded_hop,
+    check_socket_rate_limit,
+    is_ip_whitelisted,
+)
 from app.state import sessions, socket_ip_map
 
 logger = logging.getLogger("pokering")
+
+# Tracks in-flight delayed-leave tasks keyed by (session_id, client_id).
+# On reconnect within the grace window the old task is cancelled so only
+# one userLeft/hostLeft fires per client regardless of disconnect count.
+_pending_leave_tasks: dict[tuple[str, str], asyncio.Task] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -24,46 +37,48 @@ logger = logging.getLogger("pokering")
 # ---------------------------------------------------------------------------
 @sio.event
 async def connect(sid: str, environ: dict) -> None:
-    """Store client IP from the server-side ASGI scope for rate-limit whitelist checks."""
-    ip_addr = None
-    if _state.__dict__:  # always True — just importing TRUST_PROXY inline to avoid circularity
-        pass
+    """Store client IP from the server-side ASGI scope for rate-limit checks."""
     from app.config import TRUST_PROXY  # noqa: PLC0415
 
-    if TRUST_PROXY:
-        headers = dict(environ.get("asgi.scope", {}).get("headers", []))
+    scope = environ.get("asgi.scope", {})
+    peer_host = scope["client"][0] if scope.get("client") else None
+
+    ip_addr = None
+    if TRUST_PROXY and _is_peer_trusted(peer_host):
+        headers = dict(scope.get("headers", []))
         forwarded = headers.get(b"x-forwarded-for", b"").decode()
         if forwarded:
-            from app.rate_limit import _pick_forwarded_hop  # noqa: PLC0415
-
             ip_addr = _pick_forwarded_hop(forwarded)
-    if not ip_addr:
-        scope = environ.get("asgi.scope", {})
-        if scope.get("client"):
-            ip_addr = scope["client"][0]
+
+    if not ip_addr and peer_host:
+        ip_addr = peer_host
+
     if ip_addr:
         socket_ip_map[sid] = ip_addr
         _bound_dict(socket_ip_map)
 
 
 async def _delayed_leave(session_id: str, client_id: str, username: str, was_host: bool) -> None:
-    await asyncio.sleep(RECONNECT_GRACE)
-    session = sessions.get(session_id)
-    if session is None:
-        return
-    if any(u.get("clientId") == client_id for u in session["users"].values()):
-        return
-    audit(
-        "user_left",
-        session_id=session_id,
-        username=username,
-        client_id=(client_id or "")[:12],
-        was_host=was_host,
-    )
-    if was_host:
-        await sio.emit("hostLeft", room=session_id)
-    else:
-        await sio.emit("userLeft", {"username": username}, room=session_id)
+    try:
+        await asyncio.sleep(RECONNECT_GRACE)
+        session = sessions.get(session_id)
+        if session is None:
+            return
+        if any(u.get("clientId") == client_id for u in session["users"].values()):
+            return
+        audit(
+            "user_left",
+            session_id=session_id,
+            username=username,
+            client_id=(client_id or "")[:12],
+            was_host=was_host,
+        )
+        if was_host:
+            await sio.emit("hostLeft", room=session_id)
+        else:
+            await sio.emit("userLeft", {"username": username}, room=session_id)
+    finally:
+        _pending_leave_tasks.pop((session_id, client_id), None)
 
 
 @sio.event
@@ -84,7 +99,13 @@ async def disconnect(sid: str) -> None:
                 was_host=was_host,
             )
             if client_id:
-                asyncio.create_task(_delayed_leave(session_id, client_id, username, was_host))
+                task_key = (session_id, client_id)
+                old_task = _pending_leave_tasks.pop(task_key, None)
+                if old_task and not old_task.done():
+                    old_task.cancel()
+                _pending_leave_tasks[task_key] = asyncio.create_task(
+                    _delayed_leave(session_id, client_id, username, was_host)
+                )
             await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
             break
 
@@ -116,6 +137,26 @@ async def join(sid: str, data: object) -> None:
         logger.warning(f"Invalid client ID format: {str(client_id)[:20]}")
         await sio.emit("joinFailed", {"reason": "Invalid client ID"}, room=sid)
         return
+
+    # --- Reconnect token validation (SEC-12) ---
+    submitted_token = data.get("reconnectToken")
+    if not isinstance(submitted_token, str):
+        submitted_token = None
+
+    stored_token = _state.reconnect_tokens.get((session_id, client_id))
+    is_new_client = stored_token is None
+    new_token: str | None = None
+
+    if stored_token is not None and submitted_token != stored_token:
+        logger.warning(
+            f"Reconnect token mismatch: session={session_id} client={client_id[:12]} sid={sid}"
+        )
+        await sio.emit("joinFailed", {"reason": "Invalid reconnect token"}, room=sid)
+        return
+
+    if is_new_client:
+        new_token = secrets.token_urlsafe(32)
+        _state.reconnect_tokens[(session_id, client_id)] = new_token
 
     ip_addr = socket_ip_map.get(sid)
     now = datetime.now(timezone.utc)
@@ -159,7 +200,7 @@ async def join(sid: str, data: object) -> None:
         sessions[session_id]["hostClientId"] = client_id
         deck_type = data.get("deckType", DEFAULT_DECK_TYPE)
         if deck_type in DECK_PRESETS:
-            sessions[session_id]["deck"] = DECK_PRESETS[deck_type]["values"]
+            sessions[session_id]["deck"] = list(DECK_PRESETS[deck_type]["values"])
             sessions[session_id]["deckType"] = deck_type
 
     is_host = client_id == sessions[session_id]["hostClientId"]
@@ -256,7 +297,12 @@ async def join(sid: str, data: object) -> None:
         await sio.emit("usersUpdate", sessions[session_id]["users"], room=sid)
 
     if not old_sid:
-        await sio.emit("userJoined", {"username": username, "clientId": client_id}, room=session_id)
+        # Skip the joining socket — they don't need a toast for their own join.
+        await sio.emit("userJoined", {"username": username}, room=session_id, skip_sid=sid)
+
+    # Issue private reconnect token to new clients only (SEC-12)
+    if is_new_client and new_token:
+        await sio.emit("reconnectToken", {"token": new_token}, room=sid)
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +329,12 @@ async def vote(sid: str, data: object) -> None:
     if not sessions[session_id].get("votingEnabled", True):
         return
 
+    # Reject bools (isinstance(True, int) is True in Python) and non-finite floats
+    if isinstance(value, bool):
+        return
+    if isinstance(value, float) and not math.isfinite(value):
+        return
+
     deck = sessions[session_id].get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE]["values"])
     vote_check = int(value) if isinstance(value, (int, float)) else value
     if vote_check not in deck:
@@ -294,7 +346,7 @@ async def vote(sid: str, data: object) -> None:
         if user.get("isSpectator"):
             return
         old_vote = user.get("vote")
-        if old_vote == value:
+        if old_vote == vote_check:
             return
         if old_vote is not None and user.get("voteChanged"):
             await sio.emit(
@@ -304,7 +356,7 @@ async def vote(sid: str, data: object) -> None:
             )
             return
 
-        user["vote"] = value
+        user["vote"] = vote_check  # store normalised value, not raw client value
         if old_vote is None:
             sessions[session_id]["totalVotes"] = sessions[session_id].get("totalVotes", 0) + 1
             # Increment gameplay counter for new votes only
@@ -318,7 +370,7 @@ async def vote(sid: str, data: object) -> None:
                 session_id=session_id,
                 username=user["username"],
                 client_id=(user.get("clientId") or "")[:12],
-                value=value,
+                value=vote_check,
                 previous=old_vote,
                 ip=socket_ip_map.get(sid),
             )
@@ -328,7 +380,7 @@ async def vote(sid: str, data: object) -> None:
                 session_id=session_id,
                 username=user["username"],
                 client_id=(user.get("clientId") or "")[:12],
-                value=value,
+                value=vote_check,
                 ip=socket_ip_map.get(sid),
             )
 
@@ -364,80 +416,89 @@ async def vote(sid: str, data: object) -> None:
             async def countdown() -> None:
                 nonlocal count
                 _state.countdown_active = 1
-                while count >= 0:
-                    if session_id not in sessions:
-                        _state.countdown_active = 0
+                try:
+                    while count >= 0:
+                        if session_id not in sessions:
+                            return
+                        await sio.emit("countdown", count, room=session_id)
+                        await asyncio.sleep(1)
+                        count -= 1
+
+                    session = sessions.get(session_id)
+                    if session is None:
                         return
-                    await sio.emit("countdown", count, room=session_id)
-                    await asyncio.sleep(1)
-                    count -= 1
+                    deck = session.get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE]["values"])
+                    index_of = {v: i for i, v in enumerate(deck) if v != "?"}
 
-                session = sessions.get(session_id)
-                if session is None:
+                    voted = []
+                    for u in session["users"].values():
+                        v = u["vote"]
+                        if v == "?" or v is None:
+                            continue
+                        if v in index_of:
+                            voted.append((u["username"], v))
+
+                    vote_stats: dict = {}
+                    if voted:
+                        numeric_votes = [v for _, v in voted if isinstance(v, (int, float))]
+                        if numeric_votes:
+                            avg = sum(numeric_votes) / len(numeric_votes)
+                            vote_stats["average"] = round(avg, 2)
+
+                        idxs = sorted(index_of[v] for _, v in voted)
+                        median_idx = idxs[len(idxs) // 2]
+                        vote_stats["median"] = deck[median_idx]
+
+                        STEP_THRESHOLD = 2
+                        vote_stats["outliers"] = [
+                            name
+                            for (name, v) in voted
+                            if abs(index_of[v] - median_idx) >= STEP_THRESHOLD
+                        ]
+
+                    if session_id not in sessions:
+                        return
+
+                    distinct = {v for _, v in voted}
+                    consensus = len(voted) > 0 and len(distinct) == 1
+                    vote_stats["consensus"] = consensus
+
+                    vote_map = {name: v for name, v in voted}
+                    audit(
+                        "round_revealed",
+                        session_id=session_id,
+                        round=session.get("roundCount", 1),
+                        votes=vote_map,
+                        average=vote_stats.get("average"),
+                        median=vote_stats.get("median"),
+                        outliers=vote_stats.get("outliers", []),
+                        consensus=consensus,
+                        voter_count=len(voted),
+                    )
+
+                    session["voteStats"] = vote_stats
+                    # Clear countdownActive before emitting reveal so late joiners
+                    # get the reveal-sync branch in join, not the countdown-sync branch.
+                    session["countdownActive"] = False
+
+                    _state.reveals_total += 1
+                    await sio.emit(
+                        "revealVotes",
+                        {"users": session["users"], "stats": vote_stats},
+                        room=session_id,
+                    )
+
+                except asyncio.CancelledError:
+                    # requestNewRound cancelled us — clear session state so the new round
+                    # can proceed and late joiners don't see a phantom countdown.
+                    s = sessions.get(session_id)
+                    if s is not None:
+                        s["countdownActive"] = False
+                        s.pop("countdownStartedAt", None)
+                    raise
+
+                finally:
                     _state.countdown_active = 0
-                    return
-                deck = session.get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE]["values"])
-                index_of = {v: i for i, v in enumerate(deck) if v != "?"}
-
-                voted = []
-                for u in session["users"].values():
-                    v = u["vote"]
-                    if v == "?" or v is None:
-                        continue
-                    check = int(v) if isinstance(v, (int, float)) else v
-                    if check in index_of:
-                        voted.append((u["username"], check))
-
-                vote_stats: dict = {}
-                if voted:
-                    numeric_votes = [v for _, v in voted if isinstance(v, (int, float))]
-                    if numeric_votes:
-                        avg = sum(numeric_votes) / len(numeric_votes)
-                        vote_stats["average"] = round(avg, 2)
-
-                    idxs = sorted(index_of[v] for _, v in voted)
-                    median_idx = idxs[len(idxs) // 2]
-                    vote_stats["median"] = deck[median_idx]
-
-                    STEP_THRESHOLD = 2
-                    vote_stats["outliers"] = [
-                        name
-                        for (name, v) in voted
-                        if abs(index_of[v] - median_idx) >= STEP_THRESHOLD
-                    ]
-
-                if session_id not in sessions:
-                    _state.countdown_active = 0
-                    return
-                session["countdownActive"] = False
-                session["voteStats"] = vote_stats
-
-                distinct = {v for _, v in voted}
-                consensus = len(voted) > 0 and len(distinct) == 1
-                vote_stats["consensus"] = consensus
-
-                vote_map = {name: v for name, v in voted}
-                audit(
-                    "round_revealed",
-                    session_id=session_id,
-                    round=session.get("roundCount", 1),
-                    votes=vote_map,
-                    average=vote_stats.get("average"),
-                    median=vote_stats.get("median"),
-                    outliers=vote_stats.get("outliers", []),
-                    consensus=consensus,
-                    voter_count=len(voted),
-                )
-
-                # Increment reveals counter before emit
-                _state.reveals_total += 1
-                _state.countdown_active = 0
-
-                await sio.emit(
-                    "revealVotes",
-                    {"users": session["users"], "stats": vote_stats},
-                    room=session_id,
-                )
 
             sessions[session_id]["countdownTask"] = asyncio.create_task(countdown())
 
@@ -558,7 +619,7 @@ async def changeDeck(sid: str, data: object) -> None:
     if deck_type not in DECK_PRESETS:
         return
 
-    session["deck"] = DECK_PRESETS[deck_type]["values"]
+    session["deck"] = list(DECK_PRESETS[deck_type]["values"])
     session["deckType"] = deck_type
     session["revealed"] = False
     session.pop("voteStats", None)

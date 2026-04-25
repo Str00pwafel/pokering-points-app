@@ -32,6 +32,10 @@ if (!sessionId || sessionId === 'session' || sessionId === 'undefined') {
   postCreate();
 }
 
+function getReconnectToken() {
+  return sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`) || undefined;
+}
+
 function promptRename() {
   showModal(
     'Change your username:',
@@ -46,6 +50,7 @@ function promptRename() {
         clientId: S.clientId,
         deckType: S.currentDeckType,
         wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
+        reconnectToken: getReconnectToken(),
       });
     },
     true,
@@ -75,6 +80,7 @@ function promptUsername() {
         clientId: S.clientId,
         deckType: S.currentDeckType,
         wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
+        reconnectToken: getReconnectToken(),
       });
     },
     true,
@@ -245,8 +251,8 @@ socket.on('userLeft', ({ username: name }) => {
   if (name && name !== S.username) showToast(`${name} left the session`, 'info');
 });
 
-socket.on('userJoined', ({ username: name, clientId: joinedClientId }) => {
-  if (!name || joinedClientId === S.clientId) return;
+socket.on('userJoined', ({ username: name }) => {
+  if (!name) return;
   showToast(`${name} joined the session`, 'success');
 });
 
@@ -334,7 +340,12 @@ window.addEventListener('load', () => {
           .forEach((k) => sessionStorage.removeItem(k));
         sessionStorage.setItem('pokeringIsCreator', '1');
         postCreate();
-      }
+      },
+      false,
+      false,
+      false,
+      '',
+      true
     );
   });
 
@@ -358,6 +369,7 @@ window.addEventListener('load', () => {
       clientId: S.clientId,
       deckType: S.currentDeckType,
       wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
+      reconnectToken: getReconnectToken(),
     });
   } else {
     promptUsername();

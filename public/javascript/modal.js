@@ -41,7 +41,8 @@ export function showModal(
   withInput = false,
   yesNoMode = false,
   hideCancel = false,
-  prefill = ''
+  prefill = '',
+  allowHtml = false
 ) {
   const backdrop = document.getElementById('modalBackdrop');
   const messageEl = document.getElementById('modalMessage');
@@ -49,7 +50,11 @@ export function showModal(
   const cancelBtn = document.getElementById('modalCancel');
   const errorEl = document.getElementById('modalError');
 
-  messageEl.innerHTML = message;
+  if (allowHtml) {
+    messageEl.innerHTML = message;
+  } else {
+    messageEl.textContent = message;
+  }
   if (withInput) {
     messageEl.appendChild(document.createElement('br'));
     const input = document.createElement('input');

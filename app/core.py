@@ -16,8 +16,9 @@ logger = logging.getLogger("pokering")
 _sio_cors = "*" if "*" in CORS_ORIGINS else CORS_ORIGINS
 sio: socketio.AsyncServer = socketio.AsyncServer(
     async_mode="asgi",
-    max_http_buffer_size=1_000_000,
+    max_http_buffer_size=64_000,
     cors_allowed_origins=_sio_cors,
+    cors_credentials=ALLOW_CREDENTIALS,
 )
 
 

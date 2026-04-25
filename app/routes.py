@@ -2,6 +2,7 @@ import html
 import json
 import logging
 import os
+import re
 import secrets
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from app.config import (
     ENVIRONMENT,
     LOG_RETENTION_DAYS,
     MAX_ACTIVE_SESSIONS,
+    METRICS_TOKEN,
     RATE_LIMIT_CLEANUP_INTERVAL,
     SESSION_CLEANUP_INTERVAL,
     SESSION_ID_RE,
@@ -39,6 +41,17 @@ from app.state import (
 from version import __changelog__, __version__
 
 logger = logging.getLogger("pokering")
+
+_RID_RE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def _check_metrics_auth(request: Request) -> bool:
+    """Return True when the request carries a valid metrics token (or none is configured)."""
+    if not METRICS_TOKEN:
+        return True
+    auth = request.headers.get("authorization", "")
+    return auth == f"Bearer {METRICS_TOKEN}"
+
 
 # ---------------------------------------------------------------------------
 # Theme config cache (module-level so load_theme_config can mutate it)
@@ -113,7 +126,8 @@ _CHANGELOG_SHELL = """<!DOCTYPE html>
 # ---------------------------------------------------------------------------
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
-    rid = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+    raw = request.headers.get("x-request-id", "")
+    rid = _RID_RE.sub("", raw)[:32] or uuid.uuid4().hex[:12]
     token = request_id_var.set(rid)
     try:
         response = await call_next(request)
@@ -321,9 +335,17 @@ async def get_decks():
     }
 
 
+@app.get("/healthz")
+async def healthz():
+    """Public liveness probe — no sensitive data."""
+    return {"status": "ok"}
+
+
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
     """Health check endpoint for monitoring."""
+    if not _check_metrics_auth(request):
+        return PlainTextResponse("Unauthorized", status_code=401)
     now = datetime.now(timezone.utc)
     uptime = (now - app_start_time).total_seconds()
 
@@ -363,8 +385,10 @@ async def health_check():
 
 
 @app.get("/metrics")
-async def metrics():
+async def metrics(request: Request):
     """Prometheus text-format metrics endpoint."""
+    if not _check_metrics_auth(request):
+        return PlainTextResponse("Unauthorized", status_code=401)
     now = datetime.now(timezone.utc)
     uptime = (now - app_start_time).total_seconds()
     total_users = sum(len(session.get("users", {})) for session in sessions.values())

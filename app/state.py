@@ -1,6 +1,6 @@
 import asyncio
 import os
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta, timezone
 
 from app.config import (
@@ -26,11 +26,18 @@ app_start_time: datetime = datetime.now(timezone.utc)
 # ---------------------------------------------------------------------------
 last_join_time: defaultdict = defaultdict(lambda: datetime.min.replace(tzinfo=timezone.utc))
 last_create_time: defaultdict = defaultdict(lambda: datetime.min.replace(tzinfo=timezone.utc))
-socket_rate_limits: defaultdict = defaultdict(lambda: defaultdict(list))
+socket_rate_limits: OrderedDict = OrderedDict()  # {key: {action: [timestamps]}} — LRU order
 
 # Theme configuration cache (mutable module-level, mutated by routes.load_theme_config)
 theme_config: dict | None = None
 theme_config_mtime: float | None = None
+
+# ---------------------------------------------------------------------------
+# Reconnect tokens — keyed by (session_id, client_id)
+# Issued on first join, required on subsequent joins with the same clientId.
+# Cleaned up when the session expires.
+# ---------------------------------------------------------------------------
+reconnect_tokens: dict[tuple[str, str], str] = {}
 
 # ---------------------------------------------------------------------------
 # Background-task liveness
@@ -92,6 +99,11 @@ async def session_cleanup() -> None:
                 task.cancel()
                 audit("countdown_cancelled", session_id=sid, reason="session_ended")
             del sessions[sid]
+
+            # Clean up reconnect tokens for this session
+            stale_keys = [k for k in reconnect_tokens if k[0] == sid]
+            for k in stale_keys:
+                reconnect_tokens.pop(k, None)
 
         if to_remove:
             logger.warning(f"Cleaned up {len(to_remove)} expired sessions")

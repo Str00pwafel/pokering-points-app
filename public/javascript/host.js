@@ -48,6 +48,8 @@ export function confirmHostSettings() {
     releaseHostSettingsFocus = null;
   }
 
+  const reconnectToken = sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`);
+
   if (isCreatorFlow) {
     socket.emit('join', {
       sessionId,
@@ -55,6 +57,7 @@ export function confirmHostSettings() {
       clientId: S.clientId,
       deckType: S.currentDeckType,
       wantsToVote,
+      reconnectToken: reconnectToken || undefined,
     });
   }
 
