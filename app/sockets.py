@@ -26,6 +26,9 @@ from app.state import sessions, socket_ip_map
 
 logger = logging.getLogger("pokering")
 
+# Minimum deck-position distance (inclusive) for a vote to be flagged as an outlier.
+_OUTLIER_STEP_THRESHOLD = 2
+
 # Tracks in-flight delayed-leave tasks keyed by (session_id, client_id).
 # On reconnect within the grace window the old task is cancelled so only
 # one userLeft/hostLeft fires per client regardless of disconnect count.
@@ -88,7 +91,7 @@ async def _delayed_leave(session_id: str, client_id: str, username: str, was_hos
 
 @sio.event
 async def disconnect(sid: str) -> None:
-    socket_ip_map.pop(sid, None)
+    disconnected_ip = socket_ip_map.pop(sid, None)
     for session_id in sessions:
         if sid in sessions[session_id]["users"]:
             user = sessions[session_id]["users"][sid]
@@ -102,6 +105,7 @@ async def disconnect(sid: str) -> None:
                 username=username,
                 client_id=(client_id or "")[:12],
                 was_host=was_host,
+                ip=disconnected_ip,
             )
             if client_id:
                 task_key = (session_id, client_id)
@@ -112,7 +116,7 @@ async def disconnect(sid: str) -> None:
                     _delayed_leave(session_id, client_id, username, was_host)
                 )
             await sio.emit("usersUpdate", _users_payload(sessions[session_id]), room=session_id)
-            break
+            break  # A socket belongs to exactly one session
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +126,7 @@ async def disconnect(sid: str) -> None:
 async def join(sid: str, data: object) -> None:
     # Rate limiting: 5 joins per minute
     if not check_socket_rate_limit(sid, "join", limit=5, window=60):
-        logger.warning(f"Join rate limit exceeded for socket {sid}")
+        logger.warning(f"Join rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
         await sio.emit("joinFailed", {"reason": "Too many join attempts"}, room=sid)
         return
 
@@ -215,13 +219,13 @@ async def join(sid: str, data: object) -> None:
     preserved_is_spectator = None
     preserved_vote_changed = False
     old_sid = None
-    for existing_sid, u in sessions[session_id]["users"].items():
-        if u.get("clientId") == client_id:
+    for existing_sid, existing_user in sessions[session_id]["users"].items():
+        if existing_user.get("clientId") == client_id:
             old_sid = existing_sid
-            preserved_vote = u.get("vote")
-            preserved_wants_to_vote = u.get("wantsToVote")
-            preserved_is_spectator = u.get("isSpectator")
-            preserved_vote_changed = bool(u.get("voteChanged"))
+            preserved_vote = existing_user.get("vote")
+            preserved_wants_to_vote = existing_user.get("wantsToVote")
+            preserved_is_spectator = existing_user.get("isSpectator")
+            preserved_vote_changed = bool(existing_user.get("voteChanged"))
             break
     if old_sid:
         sessions[session_id]["users"].pop(old_sid, None)
@@ -317,6 +321,7 @@ async def join(sid: str, data: object) -> None:
 async def vote(sid: str, data: object) -> None:
     # Rate limiting: 30 votes per minute
     if not check_socket_rate_limit(sid, "vote", limit=30, window=60):
+        logger.warning(f"Vote rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
         return
 
     if not isinstance(data, dict):
@@ -389,13 +394,13 @@ async def vote(sid: str, data: object) -> None:
                 ip=socket_ip_map.get(sid),
             )
 
-        users = [
-            u
-            for u in sessions[session_id]["users"].values()
-            if not u.get("isSpectator") and not (u.get("isHost") and u.get("wantsToVote") is False)
+        voting_participants = [
+            participant
+            for participant in sessions[session_id]["users"].values()
+            if not participant.get("isSpectator") and not (participant.get("isHost") and participant.get("wantsToVote") is False)
         ]
 
-        all_voted = len(users) > 0 and all(u["vote"] is not None for u in users)
+        all_voted = len(voting_participants) > 0 and all(participant["vote"] is not None for participant in voting_participants)
 
         await sio.emit(
             "userVoted",
@@ -433,15 +438,15 @@ async def vote(sid: str, data: object) -> None:
                     if session is None:
                         return
                     deck = session.get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE]["values"])
-                    index_of = {v: i for i, v in enumerate(deck) if v != "?"}
+                    index_of = {deck_val: idx for idx, deck_val in enumerate(deck) if deck_val != "?"}
 
                     voted = []
-                    for u in session["users"].values():
-                        v = u["vote"]
-                        if v == "?" or v is None:
+                    for user in session["users"].values():
+                        vote_val = user["vote"]
+                        if vote_val == "?" or vote_val is None:
                             continue
-                        if v in index_of:
-                            voted.append((u["username"], v))
+                        if vote_val in index_of:
+                            voted.append((user["username"], vote_val))
 
                     vote_stats: dict = {}
                     if voted:
@@ -450,15 +455,14 @@ async def vote(sid: str, data: object) -> None:
                             avg = sum(numeric_votes) / len(numeric_votes)
                             vote_stats["average"] = round(avg, 2)
 
-                        idxs = sorted(index_of[v] for _, v in voted)
-                        median_idx = idxs[len(idxs) // 2]
+                        sorted_indices = sorted(index_of[vote_val] for _, vote_val in voted)
+                        median_idx = sorted_indices[len(sorted_indices) // 2]
                         vote_stats["median"] = deck[median_idx]
 
-                        STEP_THRESHOLD = 2
                         vote_stats["outliers"] = [
                             name
-                            for (name, v) in voted
-                            if abs(index_of[v] - median_idx) >= STEP_THRESHOLD
+                            for (name, vote_val) in voted
+                            if abs(index_of[vote_val] - median_idx) >= _OUTLIER_STEP_THRESHOLD
                         ]
 
                     if session_id not in sessions:
@@ -468,7 +472,7 @@ async def vote(sid: str, data: object) -> None:
                     consensus = len(voted) > 0 and len(distinct) == 1
                     vote_stats["consensus"] = consensus
 
-                    vote_map = {name: v for name, v in voted}
+                    vote_map = {name: vote_val for name, vote_val in voted}
                     audit(
                         "round_revealed",
                         session_id=session_id,
@@ -496,10 +500,10 @@ async def vote(sid: str, data: object) -> None:
                 except asyncio.CancelledError:
                     # requestNewRound cancelled us — clear session state so the new round
                     # can proceed and late joiners don't see a phantom countdown.
-                    s = sessions.get(session_id)
-                    if s is not None:
-                        s["countdownActive"] = False
-                        s.pop("countdownStartedAt", None)
+                    cancelled_session = sessions.get(session_id)
+                    if cancelled_session is not None:
+                        cancelled_session["countdownActive"] = False
+                        cancelled_session.pop("countdownStartedAt", None)
                     raise
 
                 finally:
@@ -598,6 +602,7 @@ async def requestNewRound(sid: str, data: object) -> None:
 async def changeDeck(sid: str, data: object) -> None:
     # Rate limiting: 20 deck changes per minute
     if not check_socket_rate_limit(sid, "changeDeck", limit=20, window=60):
+        logger.warning(f"changeDeck rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
         return
 
     if not isinstance(data, dict):
@@ -646,6 +651,7 @@ async def changeDeck(sid: str, data: object) -> None:
 async def hostVotingDecision(sid: str, data: object) -> None:
     # Rate limiting: 10 voting decisions per minute
     if not check_socket_rate_limit(sid, "hostVotingDecision", limit=10, window=60):
+        logger.warning(f"hostVotingDecision rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
         return
 
     if not isinstance(data, dict):
@@ -682,6 +688,7 @@ async def hostVotingDecision(sid: str, data: object) -> None:
 @sio.event
 async def setSpectator(sid: str, data: object) -> None:
     if not check_socket_rate_limit(sid, "setSpectator", limit=10, window=60):
+        logger.warning(f"setSpectator rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
         return
 
     if not isinstance(data, dict):
@@ -745,6 +752,7 @@ async def setSpectator(sid: str, data: object) -> None:
 @sio.event
 async def setVotingEnabled(sid: str, data: object) -> None:
     if not check_socket_rate_limit(sid, "setVotingEnabled", limit=20, window=60):
+        logger.warning(f"setVotingEnabled rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
         return
 
     if not isinstance(data, dict):

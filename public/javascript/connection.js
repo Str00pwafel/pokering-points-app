@@ -1,4 +1,4 @@
-import { S, sessionId } from './state.js';
+import { S, sessionId, buildJoinPayload } from './state.js';
 import { showToast } from './toast.js';
 
 export const socket = io({
@@ -38,16 +38,7 @@ export function ensureConnectionIndicator() {
 
 export function rejoinSession() {
   if (!S.username) return;
-  const hostVoteDecision = sessionStorage.getItem(`pokeringHostVoteDecision_${sessionId}`);
-  const reconnectToken = sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`);
-  socket.emit('join', {
-    sessionId,
-    username: S.username,
-    clientId: S.clientId,
-    deckType: S.currentDeckType,
-    wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
-    reconnectToken: reconnectToken || undefined,
-  });
+  socket.emit('join', buildJoinPayload());
 }
 
 socket.on('connect', () => {

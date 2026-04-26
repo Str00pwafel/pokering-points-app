@@ -1,4 +1,4 @@
-import { S, sessionId, saveUsername } from './state.js';
+import { S, sessionId, saveUsername, buildJoinPayload } from './state.js';
 import { socket } from './connection.js';
 import { trapFocus } from './modal.js';
 import { isValidUsername } from './utils.js';
@@ -48,17 +48,8 @@ export function confirmHostSettings() {
     releaseHostSettingsFocus = null;
   }
 
-  const reconnectToken = sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`);
-
   if (isCreatorFlow) {
-    socket.emit('join', {
-      sessionId,
-      username: S.username,
-      clientId: S.clientId,
-      deckType: S.currentDeckType,
-      wantsToVote,
-      reconnectToken: reconnectToken || undefined,
-    });
+    socket.emit('join', buildJoinPayload(wantsToVote));
   }
 
   socket.emit('hostVotingDecision', { sessionId, wantsToVote });

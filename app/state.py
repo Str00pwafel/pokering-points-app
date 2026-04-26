@@ -28,10 +28,6 @@ last_join_time: defaultdict = defaultdict(lambda: datetime.min.replace(tzinfo=ti
 last_create_time: defaultdict = defaultdict(lambda: datetime.min.replace(tzinfo=timezone.utc))
 socket_rate_limits: OrderedDict = OrderedDict()  # {key: {action: [timestamps]}} — LRU order
 
-# Theme configuration cache (mutable module-level, mutated by routes.load_theme_config)
-theme_config: dict | None = None
-theme_config_mtime: float | None = None
-
 # ---------------------------------------------------------------------------
 # Reconnect tokens — keyed by (session_id, client_id)
 # Issued on first join, required on subsequent joins with the same clientId.

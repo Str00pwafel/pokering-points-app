@@ -2,6 +2,14 @@ __version__ = "2.0.0"
 
 __changelog__ = {
     "2.0.0": [
+        "Refactor: buildJoinPayload() helper in state.js centralises join payload — eliminates 5 duplicated call sites across connection.js, host.js, index.js",
+        "Refactor: socket_rate_limits warnings added for all rate-limited events (vote, changeDeck, hostVotingDecision, setSpectator, setVotingEnabled)",
+        "Refactor: _OUTLIER_STEP_THRESHOLD moved to module level; variable renames for clarity (cancelled_session, sorted_indices, existing_user, voting_participants, deck_val, vote_val)",
+        "Refactor: IP captured before socket_ip_map.pop in disconnect; ip field added to user_disconnected audit and join rate-limit log",
+        "Refactor: dead theme_config/theme_config_mtime removed from state.py; routes.py maintains its own private cache",
+        "Refactor: _RID_RE renamed _REQUEST_ID_RE to match SESSION_ID_RE/CLIENT_ID_RE convention; exc_info=True on all exception handlers in routes.py",
+        "Refactor: _quote_val parameters renamed value/text/char; CONTROL_CHARS_RE in utils.js extended to match server-side invisible Unicode ranges",
+        "Refactor: userList alias removed from ui.js; changelog tooltip v/c renamed versionKey/changelogItem; realVotes duplicate removed from index.js",
         "Security: POST /create checks Origin/Referer against CORS_ORIGINS when not wildcard — prevents CSRF session creation",
         "Security: audit() text-mode values quoted when containing spaces, equals, or backslash — prevents log field injection",
         "Security: _CONTROL_CHARS_RE extended to strip zero-width joiners, soft hyphens, bidi marks, and invisible Unicode — prevents homograph usernames",

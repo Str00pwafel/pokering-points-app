@@ -42,7 +42,7 @@ from version import __changelog__, __version__
 
 logger = logging.getLogger("pokering")
 
-_RID_RE = re.compile(r"[^A-Za-z0-9_-]")
+_REQUEST_ID_RE = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def _check_metrics_auth(request: Request) -> bool:
@@ -84,8 +84,8 @@ def load_theme_config() -> dict | None:
         logger.info(f"Theme config loaded and cached (mtime: {current_mtime})")
         return config
 
-    except Exception as e:
-        logger.error(f"Error loading theme config: {e}")
+    except Exception:
+        logger.error("Error loading theme config", exc_info=True)
         return None
 
 
@@ -127,7 +127,7 @@ _CHANGELOG_SHELL = """<!DOCTYPE html>
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
     raw = request.headers.get("x-request-id", "")
-    rid = _RID_RE.sub("", raw)[:32] or uuid.uuid4().hex[:12]
+    rid = _REQUEST_ID_RE.sub("", raw)[:32] or uuid.uuid4().hex[:12]
     token = request_id_var.set(rid)
     try:
         response = await call_next(request)
@@ -231,6 +231,9 @@ async def create_session(request: Request):
         "totalVotes": 0,
     }
     audit("session_created", session_id=session_id, ip=client_ip)
+    # HTTP-level create uses a per-IP cooldown rather than check_socket_rate_limit's
+    # sliding window: the socket rate limiter is designed for persistent connections;
+    # the HTTP endpoint is stateless and only needs a simple interval guard.
     # 303 See Other ensures browser issues GET to the session URL after POST /create
     return RedirectResponse(f"/session/{session_id}", status_code=303)
 
@@ -328,8 +331,8 @@ async def get_theme():
 
         return result
 
-    except Exception as e:
-        logger.error(f"Error loading theme: {e}")
+    except Exception:
+        logger.error("Error loading theme", exc_info=True)
         return default_theme
 
 

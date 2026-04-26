@@ -44,7 +44,7 @@ export const S = {
       crypto.getRandomValues(bytes);
       id =
         'client-' +
-        Array.from(bytes, (b) => b.toString(36).padStart(2, '0'))
+        Array.from(bytes, (byte) => byte.toString(36).padStart(2, '0'))
           .join('')
           .slice(0, 7);
       sessionStorage.setItem('pokeringClientId', id);
@@ -65,7 +65,9 @@ export const S = {
   deckInitialized: false,
   hostSettingsShown: false,
 
-  // Deck presets — populated from /decks on load, fallback hardcoded
+  // Deck presets — populated from /decks on load, fallback hardcoded.
+  // TODO: remove client fallback once /decks is guaranteed to succeed before first render.
+  // Keep in sync with DECK_PRESETS in app/config.py.
   deckPresets: {
     fibonacci: [1, 2, 3, 5, 8, 13, 21, '?'],
     hours: [1, 2, 4, 8, 16, 24, 40, '?'],
@@ -79,7 +81,7 @@ export const S = {
 };
 
 export function refreshMyUser() {
-  S.myUser = S.currentUsers.find((u) => u.clientId === S.clientId) || null;
+  S.myUser = S.currentUsers.find((user) => user.clientId === S.clientId) || null;
   return S.myUser;
 }
 
@@ -87,4 +89,28 @@ export function saveUsername(name) {
   S.username = name.replace(CONTROL_CHARS_RE, '').trim();
   sessionStorage.setItem('pokeringUsername', S.username);
   localStorage.setItem('pokeringUsername', S.username);
+}
+
+/**
+ * Builds the canonical join payload sent on every socket.emit('join', ...) call.
+ * Pass wantsToVote explicitly (host creator flow); omit to derive from sessionStorage.
+ */
+export function buildJoinPayload(wantsToVoteOverride) {
+  const reconnectToken =
+    sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`) || undefined;
+  const hostVoteDecision = sessionStorage.getItem(`pokeringHostVoteDecision_${sessionId}`);
+  const wantsToVote =
+    wantsToVoteOverride !== undefined
+      ? wantsToVoteOverride
+      : hostVoteDecision !== null
+      ? hostVoteDecision === 'true'
+      : undefined;
+  return {
+    sessionId,
+    username: S.username,
+    clientId: S.clientId,
+    deckType: S.currentDeckType,
+    wantsToVote,
+    reconnectToken,
+  };
 }

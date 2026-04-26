@@ -1,6 +1,6 @@
 import { showToast } from './toast.js';
 import { showModal } from './modal.js';
-import { S, sessionId, refreshMyUser, saveUsername } from './state.js';
+import { S, sessionId, refreshMyUser, saveUsername, buildJoinPayload } from './state.js';
 import { socket, ensureConnectionIndicator, hasConnectedOnce } from './connection.js';
 import {
   isUserSpectator,
@@ -32,10 +32,6 @@ if (!sessionId || sessionId === 'session' || sessionId === 'undefined') {
   postCreate();
 }
 
-function getReconnectToken() {
-  return sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`) || undefined;
-}
-
 function promptRename() {
   showModal(
     'Change your username:',
@@ -43,15 +39,7 @@ function promptRename() {
       const name = document.getElementById('modalInput').value.trim();
       saveUsername(name);
       showToast(`Username changed to "${S.username}"`, 'success');
-      const hostVoteDecision = sessionStorage.getItem(`pokeringHostVoteDecision_${sessionId}`);
-      socket.emit('join', {
-        sessionId,
-        username: S.username,
-        clientId: S.clientId,
-        deckType: S.currentDeckType,
-        wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
-        reconnectToken: getReconnectToken(),
-      });
+      socket.emit('join', buildJoinPayload());
     },
     true,
     false,
@@ -73,15 +61,7 @@ function promptUsername() {
       errorEl.textContent = '';
       saveUsername(name);
       document.getElementById('mainContent').classList.remove('hidden');
-      const hostVoteDecision = sessionStorage.getItem(`pokeringHostVoteDecision_${sessionId}`);
-      socket.emit('join', {
-        sessionId,
-        username: S.username,
-        clientId: S.clientId,
-        deckType: S.currentDeckType,
-        wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
-        reconnectToken: getReconnectToken(),
-      });
+      socket.emit('join', buildJoinPayload());
     },
     true,
     false,
@@ -115,7 +95,7 @@ socket.on('userVoted', ({ clientId: votedId, voteChanged }) => {
   const user =
     votedId === S.clientId
       ? S.myUser
-      : S.currentUsers.find((u) => u.clientId === votedId);
+      : S.currentUsers.find((currentUser) => currentUser.clientId === votedId);
   if (!user) return;
   const firstFlag = voteChanged && !user.voteChanged;
   if (user.vote === null) user.vote = true;
@@ -132,7 +112,7 @@ socket.on('countdown', (seconds) => {
   document.getElementById('newRoundBtn').disabled = true;
   document.getElementById('newSessionBtn').disabled = true;
   document.getElementById('deckSelector').disabled = true;
-  document.querySelectorAll('.user-edit-btn').forEach((b) => (b.disabled = true));
+  document.querySelectorAll('.user-edit-btn').forEach((btn) => (btn.disabled = true));
 });
 
 socket.on('revealVotes', ({ users, stats }) => {
@@ -145,29 +125,31 @@ socket.on('revealVotes', ({ users, stats }) => {
   document.getElementById('newSessionBtn').disabled = false;
   document.getElementById('countdown').textContent = '';
 
-  document.querySelectorAll('.card').forEach((c) => {
-    c.disabled = true;
+  document.querySelectorAll('.card').forEach((card) => {
+    card.disabled = true;
   });
 
-  const votingUsers = users.filter((u) => u.vote !== null && !isUserSpectator(u));
+  const votingUsers = users.filter((user) => user.vote !== null && !isUserSpectator(user));
 
   const results = votingUsers
-    .map((u, i) => {
-      const isOutlier = stats?.outliers?.includes(u.username);
-      const delay = (i * 80).toString();
-      const safeVote = escapeHTML(String(u.vote));
+    .map((user, index) => {
+      const isOutlier = stats?.outliers?.includes(user.username);
+      const delay = (index * 80).toString();
+      const safeVote = escapeHTML(String(user.vote));
       return `
         <div class="vote-card-wrapper${isOutlier ? ' outlier' : ''}">
           <div class="vote-card${isOutlier ? ' outlier' : ''}" data-value="${safeVote}" style="animation-delay:${delay}ms">
             <div class="vote-value">${safeVote}</div>
           </div>
-          <p class="voter-name" title="${escapeHTML(u.username)}">${escapeHTML(u.username)}</p>
+          <p class="voter-name" title="${escapeHTML(user.username)}">${escapeHTML(user.username)}</p>
         </div>
       `;
     })
     .join('');
 
-  const realVotesForStats = votingUsers.map((u) => u.vote).filter((v) => v !== null && v !== '?');
+  const realVotesForStats = votingUsers
+    .map((user) => user.vote)
+    .filter((vote) => vote !== null && vote !== '?');
   const uniqueVotes = new Set(realVotesForStats).size;
   const allAgreed = realVotesForStats.length >= 2 && uniqueVotes === 1;
 
@@ -198,12 +180,13 @@ socket.on('revealVotes', ({ users, stats }) => {
   }
   const summary = statTiles.length ? `<div class="stat-row">${statTiles.join('')}</div>` : '';
 
+  // innerHTML is intentional here: all user-supplied values go through escapeHTML(),
+  // stat values are numeric or server-controlled. textContent cannot produce the card layout.
   document.getElementById('votesDisplay').innerHTML = results;
   document.getElementById('voteSummary').innerHTML = summary;
   renderUserList(promptRename);
 
-  const realVotes = votingUsers.map((u) => u.vote).filter((v) => v !== null && v !== '?');
-  if (realVotes.length >= 2 && realVotes.every((v) => v === realVotes[0])) {
+  if (realVotesForStats.length >= 2 && realVotesForStats.every((vote) => vote === realVotesForStats[0])) {
     const totalDelay = votingUsers.length * 80 + 500;
     setTimeout(() => launchConfetti(), totalDelay);
   }
@@ -217,7 +200,7 @@ socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
   const votingChanged = S.votingEnabled !== enabled;
   S.votingEnabled = enabled;
 
-  document.querySelectorAll('.card').forEach((c) => c.classList.remove('selected'));
+  document.querySelectorAll('.card').forEach((card) => card.classList.remove('selected'));
   document.getElementById('countdown').textContent = '';
   document.getElementById('votesDisplay').innerHTML = '';
   document.getElementById('voteSummary').innerHTML = '';
@@ -336,8 +319,8 @@ window.addEventListener('load', () => {
         'Currently connected users will <span class="emph-warning">NOT</span> be moved.',
       () => {
         Object.keys(sessionStorage)
-          .filter((k) => k.startsWith('pokeringHostVoteDecision_'))
-          .forEach((k) => sessionStorage.removeItem(k));
+          .filter((storageKey) => storageKey.startsWith('pokeringHostVoteDecision_'))
+          .forEach((storageKey) => sessionStorage.removeItem(storageKey));
         sessionStorage.setItem('pokeringIsCreator', '1');
         postCreate();
       },
@@ -345,7 +328,7 @@ window.addEventListener('load', () => {
       false,
       false,
       '',
-      true
+      true // allowHtml — trusted static string, no user data interpolated
     );
   });
 
@@ -362,15 +345,7 @@ window.addEventListener('load', () => {
     showHostSettingsModal(true);
   } else if (S.username && isValidUsername(S.username)) {
     document.getElementById('mainContent').classList.remove('hidden');
-    const hostVoteDecision = sessionStorage.getItem(`pokeringHostVoteDecision_${sessionId}`);
-    socket.emit('join', {
-      sessionId,
-      username: S.username,
-      clientId: S.clientId,
-      deckType: S.currentDeckType,
-      wantsToVote: hostVoteDecision !== null ? hostVoteDecision === 'true' : undefined,
-      reconnectToken: getReconnectToken(),
-    });
+    socket.emit('join', buildJoinPayload());
   } else {
     promptUsername();
   }

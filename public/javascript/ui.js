@@ -17,8 +17,8 @@ export function updateVersionBadge() {
       if (tooltip && changelog) {
         tooltip.innerHTML = Object.entries(changelog)
           .map(
-            ([v, items]) =>
-              `<h4>v${escapeHTML(v)}</h4><ul>${items.map((c) => `<li>${escapeHTML(c)}</li>`).join('')}</ul>`
+            ([versionKey, items]) =>
+              `<h4>v${escapeHTML(versionKey)}</h4><ul>${items.map((changelogItem) => `<li>${escapeHTML(changelogItem)}</li>`).join('')}</ul>`
           )
           .join('');
       }
@@ -63,7 +63,7 @@ export function renderUserList(onEditBtn) {
   const toggleBtn = document.getElementById('toggleVotingBtn');
   toggleBtn.classList.toggle('hidden', !isHost);
 
-  const hasVotes = users.some((u) => u.vote !== null);
+  const hasVotes = users.some((user) => user.vote !== null);
 
   if (isHost) {
     document.getElementById('deckSelector').disabled = hasVotes || S.votesRevealed;
@@ -88,9 +88,8 @@ export function renderUserList(onEditBtn) {
     cardOpts.classList.toggle('hidden', isUserSpectator(S.myUser));
   }
 
-  const userList = users;
-  const votingUsers = userList.filter((u) => !isUserSpectator(u));
-  const selected = votingUsers.filter((u) => u.vote !== null).length;
+  const votingUsers = users.filter((user) => !isUserSpectator(user));
+  const selected = votingUsers.filter((user) => user.vote !== null).length;
   document.getElementById('status').textContent = `${selected} of ${votingUsers.length} selected`;
 
   const userCountEl = document.getElementById('userCount');
@@ -104,7 +103,7 @@ export function renderUserList(onEditBtn) {
   if (!userListContent) return;
   userListContent.innerHTML = '';
 
-  userList.forEach((user) => {
+  users.forEach((user) => {
     const isSpectator = isUserSpectator(user);
     const hasVoted = user.vote !== null;
 
