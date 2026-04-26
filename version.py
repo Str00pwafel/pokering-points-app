@@ -33,6 +33,7 @@ __changelog__ = {
         "Fix: changeDeck and join store list() copy of deck preset instead of shared reference",
         "Fix: voteChanged flag cleared on requestNewRound so first vote of new round is not flagged as a change",
         "Fix: userJoined no longer sends clientId to room; skip_sid prevents self-toast without clientId comparison",
+        "Fix: theme decorations (crown, santa hat) missing on cached reload — applyTheme now defers to DOMContentLoaded so logo element is present",
         "Feature: /decks endpoint — deck presets served from server, fetched on load (config in one place)",
         "Feature: THEME_TZ env var — timezone-aware theme date matching via zoneinfo",
         "Feature: gameplay metrics counters — pokering_votes_total, pokering_reveals_total, pokering_countdown_active in /metrics",

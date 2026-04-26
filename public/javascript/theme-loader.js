@@ -1,6 +1,10 @@
-// Theme Loader - Loads and applies theme from server
 const THEME_CACHE_KEY = 'pokeringThemeCache';
 const THEME_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function domReady(fn) {
+  if (document.readyState !== 'loading') fn();
+  else document.addEventListener('DOMContentLoaded', fn, { once: true });
+}
 
 function applyTheme(theme) {
   const root = document.documentElement;
@@ -25,7 +29,7 @@ function applyTheme(theme) {
     if (raw) {
       const cached = JSON.parse(raw);
       if (cached && cached.ts && Date.now() - cached.ts < THEME_CACHE_TTL_MS && cached.theme) {
-        applyTheme(cached.theme);
+        domReady(() => applyTheme(cached.theme));
         return;
       }
     }
@@ -41,7 +45,7 @@ function applyTheme(theme) {
     }
     const theme = await response.json();
     const version = response.headers.get('X-App-Version') || '';
-    applyTheme(theme);
+    domReady(() => applyTheme(theme));
     try {
       localStorage.setItem(THEME_CACHE_KEY, JSON.stringify({ theme, version, ts: Date.now() }));
     } catch {
