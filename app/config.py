@@ -91,7 +91,15 @@ RECONNECT_GRACE: int = 2  # seconds — delay leave broadcasts to tolerate brief
 # underscores. Control chars (incl \n, \t) stripped before regex check; leading/trailing
 # whitespace trimmed.
 USERNAME_RE: re.Pattern[str] = re.compile(r"^[\w\s\-']{1,30}$", re.UNICODE)
-_CONTROL_CHARS_RE: re.Pattern[str] = re.compile(r"[\x00-\x1F\x7F]")
+_CONTROL_CHARS_RE: re.Pattern[str] = re.compile(
+    r"[\x00-\x1F\x7F"       # ASCII control chars
+    r"\u00AD"                # soft hyphen
+    r"\u200B-\u200F"         # ZW space, ZWNJ, ZWJ, LRM, RLM
+    r"\u2028-\u202F"         # line/paragraph separators + bidi formatting
+    r"\u2060-\u206F"         # word joiner + invisible formatting
+    r"\uFEFF"                # BOM / zero-width no-break space
+    r"]"
+)
 SESSION_ID_RE: re.Pattern[str] = re.compile(
     r"^[A-Za-z0-9_\-]{16}$"
 )  # matches token_urlsafe(12) length

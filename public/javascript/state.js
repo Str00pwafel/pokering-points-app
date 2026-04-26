@@ -53,7 +53,7 @@ export const S = {
   })(),
 
   // Game state
-  currentUsers: {},
+  currentUsers: [],
   myUser: null,
   currentDeckType: 'fibonacci',
   cardValues: [1, 2, 3, 5, 8, 13, 21, '?'],
@@ -79,7 +79,7 @@ export const S = {
 };
 
 export function refreshMyUser() {
-  S.myUser = Object.values(S.currentUsers).find((u) => u.clientId === S.clientId) || null;
+  S.myUser = S.currentUsers.find((u) => u.clientId === S.clientId) || null;
   return S.myUser;
 }
 

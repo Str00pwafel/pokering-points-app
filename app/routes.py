@@ -182,6 +182,16 @@ async def get_welcome():
 
 @app.post("/create")
 async def create_session(request: Request):
+    if "*" not in CORS_ORIGINS:
+        origin = request.headers.get("origin", "")
+        referer = request.headers.get("referer", "")
+        check = origin or referer
+        if not any(check.startswith(o) for o in CORS_ORIGINS):
+            logger.warning(f"CSRF check failed for POST /create: origin={origin!r} referer={referer!r}")
+            return HTMLResponse(
+                content="<html><body><h1>Forbidden</h1></body></html>",
+                status_code=403,
+            )
     if len(sessions) >= MAX_ACTIVE_SESSIONS:
         logger.warning(f"Session creation rejected: max limit reached ({MAX_ACTIVE_SESSIONS})")
         return HTMLResponse(

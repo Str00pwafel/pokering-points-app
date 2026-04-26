@@ -61,13 +61,13 @@ Source: security audit + bug review, Apr 25 2026. All fixes ship under v2.0.0.
 
 ---
 
-## Low
+## Low — v2.0.0 ✅
 
 | ID | Description | File(s) |
 |----|-------------|---------|
 | BUG-2/8 | `changeDeck` + `join` store deck as reference — missing `list()` copy | `app/sockets.py` |
 | BUG-10 | Stale `voteChanged` flag not cleared in `requestNewRound` | `app/sockets.py` |
-| BUG-11 | SIDs exposed as keys in `usersUpdate` / `revealVotes` payloads | `app/sockets.py` |
-| SEC-1 | CSRF on `POST /create` — no `Origin`/`Referer` check | `app/routes.py` |
-| SEC-16 | Audit field injection in text log mode — values not quoted | `app/logging_setup.py` |
-| SEC-21 | Unicode homograph usernames — zero-width chars permitted by `\w` | `app/config.py` |
+| BUG-11 ✅ | SIDs exposed as keys in `usersUpdate` / `revealVotes` payloads | `app/sockets.py` |
+| SEC-1 ✅ | CSRF on `POST /create` — no `Origin`/`Referer` check | `app/routes.py` |
+| SEC-16 ✅ | Audit field injection in text log mode — values not quoted | `app/logging_setup.py` |
+| SEC-21 ✅ | Unicode homograph usernames — zero-width chars permitted by `\w` | `app/config.py` |

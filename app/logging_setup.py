@@ -105,6 +105,14 @@ logger.addHandler(_file_handler)
 # ---------------------------------------------------------------------------
 # audit() helper
 # ---------------------------------------------------------------------------
+def _quote_val(v: object) -> str:
+    """Quote audit field values that contain whitespace, quotes, or '='."""
+    s = str(v)
+    if any(c in s for c in (' ', '\t', '\n', '"', '=', '\\')):
+        return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    return s
+
+
 def audit(event: str, **fields: object) -> None:
     """Emit a structured audit event.
 
@@ -120,6 +128,6 @@ def audit(event: str, **fields: object) -> None:
             continue
         safe_key = f"x_{k}" if k in _RESERVED_LOG_ATTRS else k
         clean[safe_key] = v
-    parts = [f"{k}={v}" for k, v in clean.items()]
+    parts = [f"{k}={_quote_val(v)}" for k, v in clean.items()]
     msg = f"event={event}" + (" " + " ".join(parts) if parts else "")
     logger.info(msg, extra={"event": event, **clean})

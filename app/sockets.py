@@ -32,6 +32,11 @@ logger = logging.getLogger("pokering")
 _pending_leave_tasks: dict[tuple[str, str], asyncio.Task] = {}
 
 
+def _users_payload(session: dict) -> list[dict]:
+    """Serialize users as a list, stripping SID keys from the wire payload."""
+    return list(session["users"].values())
+
+
 # ---------------------------------------------------------------------------
 # connect / disconnect
 # ---------------------------------------------------------------------------
@@ -106,7 +111,7 @@ async def disconnect(sid: str) -> None:
                 _pending_leave_tasks[task_key] = asyncio.create_task(
                     _delayed_leave(session_id, client_id, username, was_host)
                 )
-            await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
+            await sio.emit("usersUpdate", _users_payload(sessions[session_id]), room=session_id)
             break
 
 
@@ -269,7 +274,7 @@ async def join(sid: str, data: object) -> None:
     session_deck_type = sessions[session_id].get("deckType", DEFAULT_DECK_TYPE)
     await sio.emit("deckChanged", {"deckType": session_deck_type}, room=sid)
 
-    await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
+    await sio.emit("usersUpdate", _users_payload(sessions[session_id]), room=session_id)
     await sio.emit(
         "sessionState",
         {"votingEnabled": sessions[session_id].get("votingEnabled", True)},
@@ -289,12 +294,12 @@ async def join(sid: str, data: object) -> None:
         await sio.emit(
             "revealVotes",
             {
-                "users": sessions[session_id]["users"],
+                "users": _users_payload(sessions[session_id]),
                 "stats": sessions[session_id].get("voteStats", {}),
             },
             room=sid,
         )
-        await sio.emit("usersUpdate", sessions[session_id]["users"], room=sid)
+        await sio.emit("usersUpdate", _users_payload(sessions[session_id]), room=sid)
 
     if not old_sid:
         # Skip the joining socket — they don't need a toast for their own join.
@@ -484,7 +489,7 @@ async def vote(sid: str, data: object) -> None:
                     _state.reveals_total += 1
                     await sio.emit(
                         "revealVotes",
-                        {"users": session["users"], "stats": vote_stats},
+                        {"users": _users_payload(session), "stats": vote_stats},
                         room=session_id,
                     )
 
@@ -583,7 +588,7 @@ async def requestNewRound(sid: str, data: object) -> None:
     await sio.emit(
         "roundReset", {"deckType": deck_type, "votingEnabled": new_voting_enabled}, room=session_id
     )
-    await sio.emit("usersUpdate", old_session["users"], room=session_id)
+    await sio.emit("usersUpdate", _users_payload(old_session), room=session_id)
 
 
 # ---------------------------------------------------------------------------
@@ -668,7 +673,7 @@ async def hostVotingDecision(sid: str, data: object) -> None:
             wants_to_vote=wants_to_vote,
             ip=socket_ip_map.get(sid),
         )
-        await sio.emit("usersUpdate", sessions[session_id]["users"], room=session_id)
+        await sio.emit("usersUpdate", _users_payload(sessions[session_id]), room=session_id)
 
 
 # ---------------------------------------------------------------------------
@@ -731,7 +736,7 @@ async def setSpectator(sid: str, data: object) -> None:
         is_spectator=is_spectator,
     )
 
-    await sio.emit("usersUpdate", session["users"], room=session_id)
+    await sio.emit("usersUpdate", _users_payload(session), room=session_id)
 
 
 # ---------------------------------------------------------------------------

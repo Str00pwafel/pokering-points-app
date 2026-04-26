@@ -115,7 +115,7 @@ socket.on('userVoted', ({ clientId: votedId, voteChanged }) => {
   const user =
     votedId === S.clientId
       ? S.myUser
-      : Object.values(S.currentUsers).find((u) => u.clientId === votedId);
+      : S.currentUsers.find((u) => u.clientId === votedId);
   if (!user) return;
   const firstFlag = voteChanged && !user.voteChanged;
   if (user.vote === null) user.vote = true;
@@ -149,7 +149,7 @@ socket.on('revealVotes', ({ users, stats }) => {
     c.disabled = true;
   });
 
-  const votingUsers = Object.values(users).filter((u) => u.vote !== null && !isUserSpectator(u));
+  const votingUsers = users.filter((u) => u.vote !== null && !isUserSpectator(u));
 
   const results = votingUsers
     .map((u, i) => {

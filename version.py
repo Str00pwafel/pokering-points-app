@@ -2,6 +2,10 @@ __version__ = "2.0.0"
 
 __changelog__ = {
     "2.0.0": [
+        "Security: POST /create checks Origin/Referer against CORS_ORIGINS when not wildcard — prevents CSRF session creation",
+        "Security: audit() text-mode values quoted when containing spaces, equals, or backslash — prevents log field injection",
+        "Security: _CONTROL_CHARS_RE extended to strip zero-width joiners, soft hyphens, bidi marks, and invisible Unicode — prevents homograph usernames",
+        "Fix: usersUpdate and revealVotes payloads emit list of user objects instead of SID-keyed dict — socket IDs no longer leak to all clients",
         "Security: X-Request-ID header sanitised — non-alphanumeric characters stripped, capped at 32 chars to prevent log injection",
         "Security: modal innerHTML replaced with textContent by default; allowHtml=true required for trusted static strings",
         "Security: /health and /metrics require Authorization: Bearer <METRICS_TOKEN> when METRICS_TOKEN env var is set",

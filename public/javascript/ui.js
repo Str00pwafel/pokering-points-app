@@ -63,7 +63,7 @@ export function renderUserList(onEditBtn) {
   const toggleBtn = document.getElementById('toggleVotingBtn');
   toggleBtn.classList.toggle('hidden', !isHost);
 
-  const hasVotes = Object.values(users).some((u) => u.vote !== null);
+  const hasVotes = users.some((u) => u.vote !== null);
 
   if (isHost) {
     document.getElementById('deckSelector').disabled = hasVotes || S.votesRevealed;
@@ -88,7 +88,7 @@ export function renderUserList(onEditBtn) {
     cardOpts.classList.toggle('hidden', isUserSpectator(S.myUser));
   }
 
-  const userList = Object.values(users);
+  const userList = users;
   const votingUsers = userList.filter((u) => !isUserSpectator(u));
   const selected = votingUsers.filter((u) => u.vote !== null).length;
   document.getElementById('status').textContent = `${selected} of ${votingUsers.length} selected`;
