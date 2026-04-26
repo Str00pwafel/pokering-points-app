@@ -89,6 +89,9 @@ All optional. Defaults work out of the box for local development.
 | `RATE_LIMIT_WHITELIST`   | _(empty)_          | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`)                                     |
 | `MAX_RATE_LIMIT_ENTRIES` | `10000`            | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded                                                |
 | `THEME_TZ`               | `Europe/Amsterdam` | Timezone for date-based theme schedule (IANA tz name)                                                                     |
+| `TRUSTED_PROXY_IPS`      | _(empty)_          | Comma-separated IPs/CIDRs of trusted reverse proxies. Only honoured when `TRUST_PROXY=true`. Empty = trust all peers (backward compat) |
+| `METRICS_TOKEN`          | _(empty)_          | Bearer token for `/health` and `/metrics`. Empty = open (backward compat). Set to a secret in production                  |
+| `LOG_FORMAT`             | `text`             | Log format: `text` (human-readable) or `json` (one-line JSON per record)                                                  |
 
 No API keys or database credentials needed.
 
@@ -117,11 +120,12 @@ In development, `*` is accepted but credentials are auto-disabled (browsers reje
 
 ## Monitoring
 
-| Endpoint       | Description                                           |
-| -------------- | ----------------------------------------------------- |
-| `GET /health`  | JSON — uptime, active sessions, rate limit stats      |
-| `GET /metrics` | Prometheus text format — sessions, users, rate limits |
-| `GET /version` | Current version + last 2 changelogs                   |
+| Endpoint        | Auth required?                  | Description                                                     |
+| --------------- | ------------------------------- | --------------------------------------------------------------- |
+| `GET /healthz`  | No                              | Public liveness probe — safe for load-balancer / uptime checks  |
+| `GET /health`   | Bearer `METRICS_TOKEN` (if set) | JSON — uptime, active sessions, background-task staleness       |
+| `GET /metrics`  | Bearer `METRICS_TOKEN` (if set) | Prometheus text format — sessions, users, votes, countdowns     |
+| `GET /version`  | No                              | Current version + last 2 changelogs                             |
 
 ## Themes
 
@@ -176,6 +180,18 @@ Add custom themes by editing `themes.json` — no code changes needed.
 - Input validation via regex on all user inputs; usernames allow unicode letters/digits/spaces with control chars stripped
 - Rate-limit tracking dicts bounded (`MAX_RATE_LIMIT_ENTRIES`) — oldest entries evicted to prevent IPv6 flood growth
 - Rate limiting on all Socket.IO events and HTTP endpoints
+
+- Server-issued reconnect tokens (32-byte `secrets.token_urlsafe`) prevent `clientId` impersonation — mismatched token → `joinFailed`
+- Socket IDs (SIDs) never sent to clients — `usersUpdate` and `revealVotes` payloads emit a list of user objects, not SID-keyed dicts
+- `TRUSTED_PROXY_IPS` allowlist gates `X-Forwarded-For` trust — direct clients cannot spoof IP to bypass rate limits
+- `POST /create` validates `Origin`/`Referer` against `CORS_ORIGINS` in non-wildcard deployments (CSRF protection)
+- `/health` and `/metrics` require `Authorization: Bearer <METRICS_TOKEN>` when `METRICS_TOKEN` is set
+- Socket rate limits keyed by IP (fall back to SID) — limits persist across reconnections
+- `max_http_buffer_size` capped at 64 KB — limits memory amplification from oversized Socket.IO frames
+- Modal messages use `textContent` by default — HTML only rendered for trusted static strings (`allowHtml=true`)
+- `X-Request-ID` header sanitised to `[A-Za-z0-9_-]` max 32 chars before propagation — prevents log injection
+- Audit field values quoted when containing spaces/`=`/`\\` — prevents log field injection in text mode
+- `CONTROL_CHARS_RE` strips zero-width joiners, soft hyphens, bidi marks, and BOM — prevents homograph usernames
 
 ### Audit logs & PII
 
