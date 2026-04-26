@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 import app.state as _state
 from app.config import (
     CHANGELOG_EXPANDED_COUNT,
+    CORS_ORIGINS,
     CREATE_RATE_LIMIT,
     DECK_PRESETS,
     DEFAULT_DECK_TYPE,
