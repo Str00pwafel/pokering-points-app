@@ -1,8 +1,7 @@
 // eslint-disable-next-line no-control-regex
 export const CONTROL_CHARS_RE =
-  /[\x00-\x1F\x7F­​-‏ - ⁠-⁯﻿]/g;
-// Mirrors server's sanitize_username: unicode letters/digits/spaces/hyphen/apostrophe/underscore, 1-30 chars.
-// Keep in sync with USERNAME_RE in app/config.py.
+  /[\x00-\x1F\x7F\u00AD\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF]/g;
+// Mirrors server _CONTROL_CHARS_RE in app/config.py.
 export const USERNAME_RE = /^[\p{L}\p{N}\s\-'_]{1,30}$/u;
 export const USERNAME_MAX_LEN = 30;
 
