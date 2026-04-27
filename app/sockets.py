@@ -240,7 +240,17 @@ async def join(sid: str, data: object) -> None:
 
     is_spectator = False
     if not is_host:
-        if isinstance(data.get("isSpectator"), bool):
+        # Lock spectator status during active rounds to prevent mid-round bypass via join payload.
+        # setSpectator has the same guard; join must match it.
+        round_active = (
+            sessions[session_id].get("revealed")
+            or sessions[session_id].get("countdownActive")
+            or preserved_vote is not None
+            or any(u.get("vote") is not None for u in sessions[session_id]["users"].values())
+        )
+        if round_active and preserved_is_spectator is not None:
+            is_spectator = bool(preserved_is_spectator)
+        elif isinstance(data.get("isSpectator"), bool):
             is_spectator = data["isSpectator"]
         elif preserved_is_spectator is not None:
             is_spectator = bool(preserved_is_spectator)

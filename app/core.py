@@ -48,7 +48,7 @@ app.add_middleware(
     allow_origins=CORS_ORIGINS,
     allow_credentials=ALLOW_CREDENTIALS,
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-Request-ID"],
     max_age=3600,
 )
 

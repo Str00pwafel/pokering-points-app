@@ -2,6 +2,9 @@ __version__ = "2.0.0"
 
 __changelog__ = {
     "2.0.0": [
+    "SEC-22: Tighten CORS allow_headers from wildcard to Content-Type + X-Request-ID only",
+    "BUG-12: Lock spectator status via join payload during active rounds (mid-round bypass fix)",
+    "CONSISTENCY: Rename short variable names in welcome.js tooltip (v→versionKey, c→changelogItem)",
         "Refactor: server.py split into app/ package (config, logging_setup, state, rate_limit, core, routes, sockets)",
         "Refactor: index.js split into 8 ES modules (state, connection, cards, ui, host, modal, toast, utils)",
         "Refactor: buildJoinPayload() helper in state.js centralises join payload — eliminates 5 duplicated call sites across connection.js, host.js, index.js",

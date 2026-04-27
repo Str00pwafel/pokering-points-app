@@ -33,8 +33,8 @@ function escapeHTML(str) {
     if (tooltip && changelog) {
       tooltip.innerHTML = Object.entries(changelog)
         .map(
-          ([v, items]) =>
-            `<h4>v${escapeHTML(v)}</h4><ul>${items.map((c) => `<li>${escapeHTML(c)}</li>`).join('')}</ul>`
+          ([versionKey, items]) =>
+            `<h4>v${escapeHTML(versionKey)}</h4><ul>${items.map((changelogItem) => `<li>${escapeHTML(changelogItem)}</li>`).join('')}</ul>`
         )
         .join('');
     }
