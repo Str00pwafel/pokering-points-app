@@ -2,9 +2,6 @@ __version__ = "2.0.0"
 
 __changelog__ = {
     "2.0.0": [
-    "SEC-22: Tighten CORS allow_headers from wildcard to Content-Type + X-Request-ID only",
-    "BUG-12: Lock spectator status via join payload during active rounds (mid-round bypass fix)",
-    "CONSISTENCY: Rename short variable names in welcome.js tooltip (v→versionKey, c→changelogItem)",
         "Refactor: server.py split into app/ package (config, logging_setup, state, rate_limit, core, routes, sockets)",
         "Refactor: index.js split into 8 ES modules (state, connection, cards, ui, host, modal, toast, utils)",
         "Refactor: buildJoinPayload() helper in state.js centralises join payload — eliminates 5 duplicated call sites across connection.js, host.js, index.js",
@@ -15,6 +12,7 @@ __changelog__ = {
         "Refactor: _RID_RE renamed _REQUEST_ID_RE to match SESSION_ID_RE/CLIENT_ID_RE convention; exc_info=True on all exception handlers in routes.py",
         "Refactor: _quote_val parameters renamed value/text/char; CONTROL_CHARS_RE in utils.js extended to match server-side invisible Unicode ranges",
         "Refactor: userList alias removed from ui.js; changelog tooltip v/c renamed versionKey/changelogItem; realVotes duplicate removed from index.js",
+        "Refactor: welcome.js version tooltip variable names renamed — v→versionKey, c→changelogItem",
         "Security: reconnect tokens — server issues token_urlsafe(32) on first join; rejoin requires matching token, preventing clientId impersonation",
         "Security: POST /create checks Origin/Referer against CORS_ORIGINS when not wildcard — prevents CSRF session creation",
         "Security: socket rate limits keyed by IP instead of SID — reconnection no longer resets the window",
@@ -30,6 +28,7 @@ __changelog__ = {
         "Security: Socket.IO AsyncServer now receives cors_credentials=ALLOW_CREDENTIALS explicitly",
         "Security: TRUSTED_PROXY_IPS peer check also applied in Socket.IO connect handler",
         "Security: app JS files served with Cache-Control: no-cache — prevents stale cached JS after updates",
+        "Security: CORS allow_headers tightened from wildcard to Content-Type + X-Request-ID",
         "Fix: usersUpdate and revealVotes payloads emit list of user objects instead of SID-keyed dict — socket IDs no longer leak to all clients",
         "Fix: duplicate userLeft/hostLeft events on rapid disconnect-reconnect-disconnect cycle eliminated via _pending_leave_tasks dedup",
         "Fix: countdown_active gauge stuck at 1 when requestNewRound cancels countdown task — try/except CancelledError + finally",
@@ -39,6 +38,7 @@ __changelog__ = {
         "Fix: userJoined no longer sends clientId to room; skip_sid prevents self-toast without clientId comparison",
         "Fix: theme decorations (crown, santa hat) missing on cached reload — applyTheme now defers to DOMContentLoaded so logo element is present",
         "Fix: CORS_ORIGINS missing from routes.py import — NameError on POST /create",
+        "Fix: spectator status in join payload locked during active rounds — prevents mid-round un-spectate via reconnect",
         "UX: spectate toggle in join-name modal (default off) — users choose before entering session",
         "UX: first visit to any session always shows join modal, even with cached username; reconnect token gates auto-rejoin",
         "UX: toast when another user switches to spectating or rejoins voting",
