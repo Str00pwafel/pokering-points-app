@@ -170,6 +170,15 @@ async def add_security_headers(request: Request, call_next):
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
+    path = request.url.path
+    if (
+        path.startswith("/javascript/")
+        and path.endswith(".js")
+        and "/vendor/" not in path
+        and "Cache-Control" not in response.headers
+    ):
+        response.headers["Cache-Control"] = "no-cache"
+
     return response
 
 

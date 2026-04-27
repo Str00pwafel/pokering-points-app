@@ -42,7 +42,8 @@ export function showModal(
   yesNoMode = false,
   hideCancel = false,
   prefill = '',
-  allowHtml = false
+  allowHtml = false,
+  withSpectateToggle = false
 ) {
   const backdrop = document.getElementById('modalBackdrop');
   const messageEl = document.getElementById('modalMessage');
@@ -63,6 +64,26 @@ export function showModal(
     input.maxLength = USERNAME_MAX_LEN;
     input.value = prefill;
     messageEl.appendChild(input);
+
+    if (withSpectateToggle) {
+      const toggleRow = document.createElement('div');
+      toggleRow.className = 'toggle-row';
+      toggleRow.style.marginTop = '12px';
+      const label = document.createElement('span');
+      label.textContent = 'Join as spectator';
+      const switchLabel = document.createElement('label');
+      switchLabel.className = 'toggle-switch';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = 'modalSpectateToggle';
+      const slider = document.createElement('span');
+      slider.className = 'toggle-slider';
+      switchLabel.appendChild(checkbox);
+      switchLabel.appendChild(slider);
+      toggleRow.appendChild(label);
+      toggleRow.appendChild(switchLabel);
+      messageEl.appendChild(toggleRow);
+    }
   }
   errorEl.textContent = '';
   cancelBtn.style.display = hideCancel ? 'none' : '';

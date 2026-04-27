@@ -719,6 +719,15 @@ button:disabled {
   transform: translateX(20px);
 }
 
+.toggle-switch input:disabled + .toggle-slider {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.toggle-row--disabled {
+  opacity: 0.55;
+}
+
 /* ── Host settings modal ───────────────────────────────────── */
 .host-settings-backdrop {
   position: fixed;

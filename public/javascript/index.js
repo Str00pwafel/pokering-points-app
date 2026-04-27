@@ -62,11 +62,16 @@ function promptUsername() {
       saveUsername(name);
       document.getElementById('mainContent').classList.remove('hidden');
       socket.emit('join', buildJoinPayload());
+      if (document.getElementById('modalSpectateToggle')?.checked) {
+        socket.emit('setSpectator', { sessionId, isSpectator: true });
+      }
     },
     true,
     false,
     true,
-    S.username
+    S.username,
+    false,
+    true
   );
 }
 
@@ -74,9 +79,21 @@ function promptUsername() {
 
 socket.on('usersUpdate', (users) => {
   ensureConnectionIndicator();
+  const prevUsers = S.currentUsers;
   S.currentUsers = users;
   refreshMyUser();
   const isHost = S.myUser?.isHost;
+
+  users.forEach((user) => {
+    if (user.clientId === S.clientId) return;
+    const prev = prevUsers.find((u) => u.clientId === user.clientId);
+    if (prev && prev.isSpectator !== user.isSpectator) {
+      showToast(
+        user.isSpectator ? `${user.username} is now spectating` : `${user.username} joined voting`,
+        'info'
+      );
+    }
+  });
 
   if (isHost && !S.hostSettingsShown) {
     S.hostSettingsShown = true;
@@ -186,7 +203,10 @@ socket.on('revealVotes', ({ users, stats }) => {
   document.getElementById('voteSummary').innerHTML = summary;
   renderUserList(promptRename);
 
-  if (realVotesForStats.length >= 2 && realVotesForStats.every((vote) => vote === realVotesForStats[0])) {
+  if (
+    realVotesForStats.length >= 2 &&
+    realVotesForStats.every((vote) => vote === realVotesForStats[0])
+  ) {
     const totalDelay = votingUsers.length * 80 + 500;
     setTimeout(() => launchConfetti(), totalDelay);
   }
@@ -274,17 +294,17 @@ window.addEventListener('load', () => {
     socket.emit('requestNewRound', payload);
   });
 
+  document.getElementById('toggleSpectateBtn').addEventListener('click', () => {
+    if (!S.myUser || S.myUser.isHost) return;
+    socket.emit('setSpectator', { sessionId, isSpectator: !S.myUser.isSpectator });
+  });
+
   document.getElementById('copyLinkBtn').addEventListener('click', () => {
     const url = `${window.location.origin}/session/${sessionId}`;
     navigator.clipboard
       .writeText(url)
       .then(() => showToast('Session link copied to clipboard', 'success'))
       .catch(() => showToast('Failed to copy session link', 'error'));
-  });
-
-  document.getElementById('toggleSpectateBtn').addEventListener('click', () => {
-    if (!S.myUser || S.myUser.isHost) return;
-    socket.emit('setSpectator', { sessionId, isSpectator: !S.myUser.isSpectator });
   });
 
   document.getElementById('hostUsernameInput').addEventListener('keydown', (e) => {
@@ -338,12 +358,13 @@ window.addEventListener('load', () => {
 
   // Join flow
   const isCreator = sessionStorage.getItem('pokeringIsCreator') === '1';
+  const hasReconnectToken = !!sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`);
 
   if (isCreator) {
     sessionStorage.removeItem('pokeringIsCreator');
     S.hostSettingsShown = true;
     showHostSettingsModal(true);
-  } else if (S.username && isValidUsername(S.username)) {
+  } else if (S.username && isValidUsername(S.username) && hasReconnectToken) {
     document.getElementById('mainContent').classList.remove('hidden');
     socket.emit('join', buildJoinPayload());
   } else {
