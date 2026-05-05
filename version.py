@@ -1,6 +1,9 @@
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 __changelog__ = {
+    "2.0.1": [
+        "Fix: join modal spectator toggle aligned with username input — width constrained to match text field",
+    ],
     "2.0.0": [
         "Refactor: server.py split into app/ package (config, logging_setup, state, rate_limit, core, routes, sockets)",
         "Refactor: index.js split into 8 ES modules (state, connection, cards, ui, host, modal, toast, utils)",
