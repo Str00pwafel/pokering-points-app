@@ -260,6 +260,7 @@ socket.on('userJoined', ({ username: name }) => {
 });
 
 socket.on('joinFailed', ({ reason }) => {
+  socket.disconnect();
   showModal(`Failed to join session: ${reason}`, () => {
     window.location.href = '/';
   });
