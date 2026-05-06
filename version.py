@@ -1,6 +1,11 @@
-__version__ = "2.0.1"
+__version__ = "2.0.2"
 
 __changelog__ = {
+    "2.0.2": [
+        "Fix: votes cast after reveal are now silently rejected — post-reveal vote no longer corrupts vote map for next round",
+        "Fix: countdown clears countdownActive after emitting revealVotes, not before — prevents requestNewRound from racing in and resetting votes mid-reveal",
+        "Fix: reconnect token stored only after session existence confirmed — joins to expired sessions no longer accumulate stale token entries",
+    ],
     "2.0.1": [
         "Fix: join modal spectator toggle aligned with username input — width constrained to match text field",
         "Fix: socket disconnected on joinFailed — prevents sleeping browser tabs from retrying indefinitely",

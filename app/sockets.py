@@ -165,7 +165,7 @@ async def join(sid: str, data: object) -> None:
 
     if is_new_client:
         new_token = secrets.token_urlsafe(32)
-        _state.reconnect_tokens[(session_id, client_id)] = new_token
+        # Storage deferred until after session existence check to avoid stale accumulation (BUG-C)
 
     ip_addr = socket_ip_map.get(sid)
     now = datetime.now(timezone.utc)
@@ -188,6 +188,9 @@ async def join(sid: str, data: object) -> None:
     if session_id not in sessions:
         await sio.emit("joinFailed", {"reason": "Session not found"}, room=sid)
         return
+
+    if is_new_client and new_token:
+        _state.reconnect_tokens[(session_id, client_id)] = new_token
 
     from app.config import MAX_USERS_PER_SESSION  # noqa: PLC0415
 
@@ -349,6 +352,9 @@ async def vote(sid: str, data: object) -> None:
     if not sessions[session_id].get("votingEnabled", True):
         return
 
+    if sessions[session_id].get("revealed"):
+        return
+
     # Reject bools (isinstance(True, int) is True in Python) and non-finite floats
     if isinstance(value, bool):
         return
@@ -496,16 +502,17 @@ async def vote(sid: str, data: object) -> None:
                     )
 
                     session["voteStats"] = vote_stats
-                    # Clear countdownActive before emitting reveal so late joiners
-                    # get the reveal-sync branch in join, not the countdown-sync branch.
-                    session["countdownActive"] = False
-
                     _state.reveals_total += 1
                     await sio.emit(
                         "revealVotes",
                         {"users": _users_payload(session), "stats": vote_stats},
                         room=session_id,
                     )
+                    # Clear after emit so requestNewRound cannot slip in between
+                    # voteStats write and revealVotes emit and reset a just-revealed round.
+                    # Late joiners connecting in this brief window get countdown-sync instead
+                    # of reveal-sync, which is acceptable for a sub-second window.
+                    session["countdownActive"] = False
 
                 except asyncio.CancelledError:
                     # requestNewRound cancelled us — clear session state so the new round
