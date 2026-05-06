@@ -15,3 +15,7 @@ logs/
 
 # Node
 node_modules/
+
+# Local planning docs
+plan.md
+CLAUDE.md
