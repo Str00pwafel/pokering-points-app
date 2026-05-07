@@ -124,7 +124,7 @@ async def rate_limit_cleanup() -> None:
 
         for sid in list(socket_rate_limits.keys()):
             if all(
-                not timestamps or (now - max(timestamps)) > timedelta(minutes=30)
+                not timestamps or (now - max(timestamps)) > timedelta(hours=2)
                 for timestamps in socket_rate_limits[sid].values()
             ):
                 del socket_rate_limits[sid]

@@ -47,9 +47,15 @@ export function showModal(
 ) {
   const backdrop = document.getElementById('modalBackdrop');
   const messageEl = document.getElementById('modalMessage');
+  const errorEl = document.getElementById('modalError');
+
+  // cloneNode strips listeners accumulated when modals stack (e.g. joinFailed fires during promptUsername)
+  for (const id of ['modalConfirm', 'modalCancel']) {
+    const el = document.getElementById(id);
+    el.replaceWith(el.cloneNode(true));
+  }
   const confirmBtn = document.getElementById('modalConfirm');
   const cancelBtn = document.getElementById('modalCancel');
-  const errorEl = document.getElementById('modalError');
 
   if (allowHtml) {
     messageEl.innerHTML = message;

@@ -6,6 +6,7 @@ import re
 import secrets
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import Request
@@ -154,7 +155,7 @@ async def add_security_headers(request: Request, call_next):
     csp_directives = [
         "default-src 'self'",
         "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
+        "style-src 'self'",
         "img-src 'self' data:",
         connect_src,
         "font-src 'self'",
@@ -196,7 +197,9 @@ async def create_session(request: Request):
         origin = request.headers.get("origin", "")
         referer = request.headers.get("referer", "")
         check = origin or referer
-        if not any(check.startswith(o) for o in CORS_ORIGINS):
+        parsed = urlparse(check)
+        check_origin = f"{parsed.scheme}://{parsed.netloc}"
+        if check_origin not in CORS_ORIGINS:
             logger.warning(f"CSRF check failed for POST /create: origin={origin!r} referer={referer!r}")
             return HTMLResponse(
                 content="<html><body><h1>Forbidden</h1></body></html>",

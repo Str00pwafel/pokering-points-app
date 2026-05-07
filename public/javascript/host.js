@@ -50,10 +50,10 @@ export function confirmHostSettings() {
 
   if (isCreatorFlow) {
     socket.emit('join', buildJoinPayload(wantsToVote));
+    socket.emit('setVotingEnabled', { sessionId, votingEnabled: votingEnabledVal });
   }
 
   socket.emit('hostVotingDecision', { sessionId, wantsToVote });
-  socket.emit('setVotingEnabled', { sessionId, votingEnabled: votingEnabledVal });
 
   if (!wantsToVote) {
     document.getElementById('cardOptions').classList.add('hidden');

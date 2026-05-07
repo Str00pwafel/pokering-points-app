@@ -1,6 +1,13 @@
-__version__ = "2.0.2"
+__version__ = "2.0.3"
 
 __changelog__ = {
+    "2.0.3": [
+        "Fix: showModal clones confirm/cancel buttons on entry — stacked modals no longer accumulate duplicate click handlers",
+        "Fix: setVotingEnabled only emitted on creator flow — reconnecting host no longer spuriously resets revealed flag",
+        "Security: POST /create CSRF check uses scheme+netloc equality instead of startswith — prefix-bypass attack closed",
+        "Security: style-src 'unsafe-inline' removed from CSP — runtime JS uses element.style.setProperty, not inline style blocks",
+        "Security: socket rate-limit eviction threshold raised to 2 h — covers the 3600 s requestNewRound window",
+    ],
     "2.0.2": [
         "Fix: votes cast after reveal are now silently rejected — post-reveal vote no longer corrupts vote map for next round",
         "Fix: countdown clears countdownActive after emitting revealVotes, not before — prevents requestNewRound from racing in and resetting votes mid-reveal",
