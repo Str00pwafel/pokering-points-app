@@ -66,7 +66,7 @@ export function renderUserList(onEditBtn) {
   const hasVotes = users.some((user) => user.vote !== null);
 
   if (isHost) {
-    document.getElementById('deckSelector').disabled = hasVotes || S.votesRevealed;
+    document.getElementById('deckSelector').disabled = hasVotes && !S.votesRevealed;
     toggleBtn.disabled = hasVotes && !S.votesRevealed;
     updateToggleBtnLabel();
   } else {

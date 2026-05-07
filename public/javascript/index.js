@@ -1,6 +1,13 @@
 import { showToast } from './toast.js';
 import { showModal } from './modal.js';
-import { S, sessionId, refreshMyUser, saveUsername, buildJoinPayload } from './state.js';
+import {
+  S,
+  sessionId,
+  refreshMyUser,
+  saveUsername,
+  saveSpectatorState,
+  buildJoinPayload,
+} from './state.js';
 import { socket, ensureConnectionIndicator, hasConnectedOnce } from './connection.js';
 import {
   isUserSpectator,
@@ -61,8 +68,10 @@ function promptUsername() {
       errorEl.textContent = '';
       saveUsername(name);
       document.getElementById('mainContent').classList.remove('hidden');
+      const spectate = Boolean(document.getElementById('modalSpectateToggle')?.checked);
+      saveSpectatorState(spectate);
       socket.emit('join', buildJoinPayload());
-      if (document.getElementById('modalSpectateToggle')?.checked) {
+      if (spectate) {
         socket.emit('setSpectator', { sessionId, isSpectator: true });
       }
     },
@@ -73,6 +82,8 @@ function promptUsername() {
     false,
     true
   );
+  const toggle = document.getElementById('modalSpectateToggle');
+  if (toggle) toggle.checked = S.isSpectator;
 }
 
 // ── Socket event handlers ─────────────────────────────────────────────────────
@@ -82,6 +93,7 @@ socket.on('usersUpdate', (users) => {
   const prevUsers = S.currentUsers;
   S.currentUsers = users;
   refreshMyUser();
+  if (S.myUser) saveSpectatorState(Boolean(S.myUser.isSpectator));
   const isHost = S.myUser?.isHost;
 
   users.forEach((user) => {

@@ -52,6 +52,10 @@ export const S = {
     return id;
   })(),
 
+  isSpectator:
+    sessionStorage.getItem('pokeringIsSpectator') === 'true' ||
+    localStorage.getItem('pokeringIsSpectator') === 'true',
+
   // Game state
   currentUsers: [],
   myUser: null,
@@ -91,20 +95,25 @@ export function saveUsername(name) {
   localStorage.setItem('pokeringUsername', S.username);
 }
 
+export function saveSpectatorState(val) {
+  S.isSpectator = Boolean(val);
+  sessionStorage.setItem('pokeringIsSpectator', String(S.isSpectator));
+  localStorage.setItem('pokeringIsSpectator', String(S.isSpectator));
+}
+
 /**
  * Builds the canonical join payload sent on every socket.emit('join', ...) call.
  * Pass wantsToVote explicitly (host creator flow); omit to derive from sessionStorage.
  */
 export function buildJoinPayload(wantsToVoteOverride) {
-  const reconnectToken =
-    sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`) || undefined;
+  const reconnectToken = sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`) || undefined;
   const hostVoteDecision = sessionStorage.getItem(`pokeringHostVoteDecision_${sessionId}`);
   const wantsToVote =
     wantsToVoteOverride !== undefined
       ? wantsToVoteOverride
       : hostVoteDecision !== null
-      ? hostVoteDecision === 'true'
-      : undefined;
+        ? hostVoteDecision === 'true'
+        : undefined;
   return {
     sessionId,
     username: S.username,

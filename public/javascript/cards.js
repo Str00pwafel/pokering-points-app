@@ -92,9 +92,12 @@ export function updateVotingLockState() {
 
 export function launchConfetti() {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const existing = document.querySelector('canvas[data-confetti]');
+  if (existing) existing.remove();
   const colors = ['#ff3b3b', '#ffbf00', '#2ecc40', '#0074d9', '#b10dc9', '#ff851b', '#ffffff'];
   const dpr = window.devicePixelRatio || 1;
   const canvas = document.createElement('canvas');
+  canvas.dataset.confetti = '';
   canvas.style.position = 'fixed';
   canvas.style.inset = '0';
   canvas.style.pointerEvents = 'none';
@@ -127,6 +130,7 @@ export function launchConfetti() {
   let last = null;
 
   function frame(ts) {
+    if (!document.body.contains(canvas)) return;
     if (start === null) start = ts;
     if (last === null) last = ts;
     const dt = (ts - last) / 1000;

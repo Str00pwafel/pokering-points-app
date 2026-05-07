@@ -36,7 +36,7 @@
           🔒
         </div>
         <div class="card-options" id="cardOptions"></div>
-        <div id="countdown"></div>
+        <div id="countdown" aria-live="assertive" aria-atomic="true"></div>
         <div id="votesDisplay"></div>
         <div id="voteSummary"></div>
       </div>
@@ -48,7 +48,13 @@
         <div id="userListContent"></div>
       </div>
     </div>
-    <div id="modalBackdrop" class="hidden" role="dialog" aria-modal="true">
+    <div
+      id="modalBackdrop"
+      class="hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modalMessage"
+    >
       <div id="modalContent">
         <p id="modalMessage"></p>
         <div id="modalError" class="error-message"></div>

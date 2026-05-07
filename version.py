@@ -1,6 +1,13 @@
-__version__ = "2.0.3"
+__version__ = "2.0.4"
 
 __changelog__ = {
+    "2.0.4": [
+        "Accessibility: #countdown marked aria-live=assertive and aria-atomic=true — screen readers announce the countdown",
+        "Accessibility: #modalBackdrop dialog gets aria-labelledby=modalMessage — screen readers name the dialog",
+        "UX: deckSelector re-enabled after vote reveal — host can change deck for next round without waiting for usersUpdate",
+        "UX: confetti canvas deduplicated — rapid consecutive consensus rounds no longer stack canvases and double RAF cost",
+        "UX: isSpectator persisted to sessionStorage+localStorage — spectator preference restored on re-login after tab close",
+    ],
     "2.0.3": [
         "Fix: showModal clones confirm/cancel buttons on entry — stacked modals no longer accumulate duplicate click handlers",
         "Fix: setVotingEnabled only emitted on creator flow — reconnecting host no longer spuriously resets revealed flag",
