@@ -335,6 +335,7 @@ async def vote(sid: str, data: object) -> None:
     # Rate limiting: 30 votes per minute
     if not check_socket_rate_limit(sid, "vote", limit=30, window=60):
         logger.warning(f"Vote rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
+        await sio.emit("actionFailed", {"action": "vote", "reason": "Too many votes. Slow down."}, room=sid)
         return
 
     if not isinstance(data, dict):

@@ -99,6 +99,9 @@ socket.on('usersUpdate', (users) => {
   users.forEach((user) => {
     if (user.clientId === S.clientId) return;
     const prev = prevUsers.find((u) => u.clientId === user.clientId);
+    if (prev && prev.username !== user.username) {
+      showToast(`${prev.username} renamed to ${user.username}`, 'info');
+    }
     if (prev && prev.isSpectator !== user.isSpectator) {
       showToast(
         user.isSpectator ? `${user.username} is now spectating` : `${user.username} joined voting`,

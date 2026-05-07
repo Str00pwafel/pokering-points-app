@@ -7,6 +7,8 @@ __changelog__ = {
         "UX: deckSelector re-enabled after vote reveal — host can change deck for next round without waiting for usersUpdate",
         "UX: confetti canvas deduplicated — rapid consecutive consensus rounds no longer stack canvases and double RAF cost",
         "UX: isSpectator persisted to sessionStorage+localStorage — spectator preference restored on re-login after tab close",
+        "UX: toast when another user renames — usersUpdate handler compares previous vs new username",
+        "Fix: vote rate-limit now emits actionFailed toast instead of silently dropping the vote",
     ],
     "2.0.3": [
         "Fix: showModal clones confirm/cancel buttons on entry — stacked modals no longer accumulate duplicate click handlers",
