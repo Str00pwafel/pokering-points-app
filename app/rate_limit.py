@@ -1,7 +1,13 @@
 import ipaddress
 from datetime import datetime, timedelta, timezone
 
-from app.config import MAX_RATE_LIMIT_ENTRIES, PROXY_DEPTH, RATE_LIMIT_WHITELIST, TRUST_PROXY, TRUSTED_PROXY_IPS
+from app.config import (
+    MAX_RATE_LIMIT_ENTRIES,
+    PROXY_DEPTH,
+    RATE_LIMIT_WHITELIST,
+    TRUST_PROXY,
+    TRUSTED_PROXY_IPS,
+)
 from app.state import socket_ip_map, socket_rate_limits
 
 

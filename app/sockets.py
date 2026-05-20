@@ -35,9 +35,40 @@ _OUTLIER_STEP_THRESHOLD = 2
 _pending_leave_tasks: dict[tuple[str, str], asyncio.Task] = {}
 
 
-def _users_payload(session: dict) -> list[dict]:
-    """Serialize users as a list, stripping SID keys from the wire payload."""
-    return list(session["users"].values())
+def _users_payload(session: dict, *, reveal_votes: bool = False) -> list[dict]:
+    """Serialize users as a list, stripping SID keys from the wire payload.
+
+    Pre-reveal presence updates expose only whether someone voted, not the
+    vote value. Raw votes are only sent in revealVotes and private selfState.
+    """
+    users = []
+    for user in session["users"].values():
+        wire_user = dict(user)
+        if not reveal_votes:
+            wire_user["vote"] = True if user.get("vote") is not None else None
+        users.append(wire_user)
+    return users
+
+
+async def _emit_users_update(
+    session_id: str, session: dict, *, reveal_votes: bool = False
+) -> None:
+    show_votes = reveal_votes or (
+        session.get("revealed") and not session.get("countdownActive")
+    )
+    await sio.emit(
+        "usersUpdate",
+        _users_payload(session, reveal_votes=show_votes),
+        room=session_id,
+    )
+    if show_votes:
+        return
+    for user_sid, user in session["users"].items():
+        await sio.emit("selfState", dict(user), room=user_sid)
+
+
+async def _fail_action(sid: str, action: str, reason: str) -> None:
+    await sio.emit("actionFailed", {"action": action, "reason": reason}, room=sid)
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +146,7 @@ async def disconnect(sid: str) -> None:
                 _pending_leave_tasks[task_key] = asyncio.create_task(
                     _delayed_leave(session_id, client_id, username, was_host)
                 )
-            await sio.emit("usersUpdate", _users_payload(sessions[session_id]), room=session_id)
+            await _emit_users_update(session_id, sessions[session_id])
             break  # A socket belongs to exactly one session
 
 
@@ -291,7 +322,7 @@ async def join(sid: str, data: object) -> None:
     session_deck_type = sessions[session_id].get("deckType", DEFAULT_DECK_TYPE)
     await sio.emit("deckChanged", {"deckType": session_deck_type}, room=sid)
 
-    await sio.emit("usersUpdate", _users_payload(sessions[session_id]), room=session_id)
+    await _emit_users_update(session_id, sessions[session_id])
     await sio.emit(
         "sessionState",
         {"votingEnabled": sessions[session_id].get("votingEnabled", True)},
@@ -311,12 +342,16 @@ async def join(sid: str, data: object) -> None:
         await sio.emit(
             "revealVotes",
             {
-                "users": _users_payload(sessions[session_id]),
+                "users": _users_payload(sessions[session_id], reveal_votes=True),
                 "stats": sessions[session_id].get("voteStats", {}),
             },
             room=sid,
         )
-        await sio.emit("usersUpdate", _users_payload(sessions[session_id]), room=sid)
+        await sio.emit(
+            "usersUpdate",
+            _users_payload(sessions[session_id], reveal_votes=True),
+            room=sid,
+        )
 
     if not old_sid:
         # Skip the joining socket — they don't need a toast for their own join.
@@ -335,7 +370,7 @@ async def vote(sid: str, data: object) -> None:
     # Rate limiting: 30 votes per minute
     if not check_socket_rate_limit(sid, "vote", limit=30, window=60):
         logger.warning(f"Vote rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
-        await sio.emit("actionFailed", {"action": "vote", "reason": "Too many votes. Slow down."}, room=sid)
+        await _fail_action(sid, "vote", "Too many votes. Slow down.")
         return
 
     if not isinstance(data, dict):
@@ -351,36 +386,38 @@ async def vote(sid: str, data: object) -> None:
         return
 
     if not sessions[session_id].get("votingEnabled", True):
+        await _fail_action(sid, "vote", "Voting is locked")
         return
 
     if sessions[session_id].get("revealed"):
+        await _fail_action(sid, "vote", "Votes are already revealed")
         return
 
     # Reject bools (isinstance(True, int) is True in Python) and non-finite floats
     if isinstance(value, bool):
+        await _fail_action(sid, "vote", "Invalid vote")
         return
     if isinstance(value, float) and not math.isfinite(value):
+        await _fail_action(sid, "vote", "Invalid vote")
         return
 
     deck = sessions[session_id].get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE]["values"])
     vote_check = int(value) if isinstance(value, (int, float)) else value
     if vote_check not in deck:
         logger.warning(f"Vote {value} not in deck for session {session_id}")
+        await _fail_action(sid, "vote", "Invalid vote")
         return
 
     user = sessions[session_id]["users"].get(sid)
     if user:
         if user.get("isSpectator"):
+            await _fail_action(sid, "vote", "Spectators cannot vote")
             return
         old_vote = user.get("vote")
         if old_vote == vote_check:
             return
         if old_vote is not None and user.get("voteChanged"):
-            await sio.emit(
-                "actionFailed",
-                {"action": "vote", "reason": "Vote can only be changed once per round"},
-                room=sid,
-            )
+            await _fail_action(sid, "vote", "Vote can only be changed once per round")
             return
 
         user["vote"] = vote_check  # store normalised value, not raw client value
@@ -427,6 +464,7 @@ async def vote(sid: str, data: object) -> None:
             },
             room=session_id,
         )
+        await sio.emit("selfState", dict(user), room=sid)
 
         if all_voted and not sessions[session_id]["revealed"]:
             sessions[session_id]["revealed"] = True
@@ -463,38 +501,49 @@ async def vote(sid: str, data: object) -> None:
                         if vote_val == "?" or vote_val is None:
                             continue
                         if vote_val in index_of:
-                            voted.append((user["username"], vote_val))
+                            voted.append(
+                                {
+                                    "clientId": user.get("clientId"),
+                                    "username": user.get("username"),
+                                    "vote": vote_val,
+                                }
+                            )
 
                     vote_stats: dict = {}
                     if voted:
-                        numeric_votes = [v for _, v in voted if isinstance(v, (int, float))]
+                        numeric_votes = [
+                            record["vote"]
+                            for record in voted
+                            if isinstance(record["vote"], (int, float))
+                        ]
                         if numeric_votes:
                             avg = sum(numeric_votes) / len(numeric_votes)
                             vote_stats["average"] = round(avg, 2)
 
-                        sorted_indices = sorted(index_of[vote_val] for _, vote_val in voted)
+                        sorted_indices = sorted(index_of[record["vote"]] for record in voted)
                         median_idx = sorted_indices[len(sorted_indices) // 2]
                         vote_stats["median"] = deck[median_idx]
 
                         vote_stats["outliers"] = [
-                            name
-                            for (name, vote_val) in voted
-                            if abs(index_of[vote_val] - median_idx) >= _OUTLIER_STEP_THRESHOLD
+                            record["clientId"]
+                            for record in voted
+                            if record["clientId"]
+                            and abs(index_of[record["vote"]] - median_idx)
+                            >= _OUTLIER_STEP_THRESHOLD
                         ]
 
                     if session_id not in sessions:
                         return
 
-                    distinct = {v for _, v in voted}
+                    distinct = {record["vote"] for record in voted}
                     consensus = len(voted) > 0 and len(distinct) == 1
                     vote_stats["consensus"] = consensus
 
-                    vote_map = {name: vote_val for name, vote_val in voted}
                     audit(
                         "round_revealed",
                         session_id=session_id,
                         round=session.get("roundCount", 1),
-                        votes=vote_map,
+                        votes=voted,
                         average=vote_stats.get("average"),
                         median=vote_stats.get("median"),
                         outliers=vote_stats.get("outliers", []),
@@ -506,7 +555,10 @@ async def vote(sid: str, data: object) -> None:
                     _state.reveals_total += 1
                     await sio.emit(
                         "revealVotes",
-                        {"users": _users_payload(session), "stats": vote_stats},
+                        {
+                            "users": _users_payload(session, reveal_votes=True),
+                            "stats": vote_stats,
+                        },
                         room=session_id,
                     )
                     # Clear after emit so requestNewRound cannot slip in between
@@ -610,7 +662,7 @@ async def requestNewRound(sid: str, data: object) -> None:
     await sio.emit(
         "roundReset", {"deckType": deck_type, "votingEnabled": new_voting_enabled}, room=session_id
     )
-    await sio.emit("usersUpdate", _users_payload(old_session), room=session_id)
+    await _emit_users_update(session_id, old_session)
 
 
 # ---------------------------------------------------------------------------
@@ -684,20 +736,35 @@ async def hostVotingDecision(sid: str, data: object) -> None:
     if not isinstance(wants_to_vote, bool):
         return
 
-    if session_id not in sessions:
+    session = sessions.get(session_id)
+    if session is None:
         return
 
-    user = sessions[session_id]["users"].get(sid)
-    if user and user.get("isHost"):
-        user["wantsToVote"] = wants_to_vote
-        audit(
-            "host_voting_decision",
-            session_id=session_id,
-            host=user.get("username", "unknown"),
-            wants_to_vote=wants_to_vote,
-            ip=socket_ip_map.get(sid),
+    user = session["users"].get(sid)
+    if not user or not user.get("isHost"):
+        return
+
+    if user.get("wantsToVote") == wants_to_vote:
+        return
+
+    has_votes = any(u.get("vote") is not None for u in session["users"].values())
+    if has_votes or session.get("revealed") or session.get("countdownActive"):
+        await _fail_action(
+            sid,
+            "hostVotingDecision",
+            "Cannot change host voting participation mid-round",
         )
-        await sio.emit("usersUpdate", _users_payload(sessions[session_id]), room=session_id)
+        return
+
+    user["wantsToVote"] = wants_to_vote
+    audit(
+        "host_voting_decision",
+        session_id=session_id,
+        host=user.get("username", "unknown"),
+        wants_to_vote=wants_to_vote,
+        ip=socket_ip_map.get(sid),
+    )
+    await _emit_users_update(session_id, session)
 
 
 # ---------------------------------------------------------------------------
@@ -761,7 +828,7 @@ async def setSpectator(sid: str, data: object) -> None:
         is_spectator=is_spectator,
     )
 
-    await sio.emit("usersUpdate", _users_payload(session), room=session_id)
+    await _emit_users_update(session_id, session)
 
 
 # ---------------------------------------------------------------------------

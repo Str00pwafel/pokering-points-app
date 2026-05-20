@@ -120,6 +120,7 @@ export function buildJoinPayload(wantsToVoteOverride) {
     clientId: S.clientId,
     deckType: S.currentDeckType,
     wantsToVote,
+    isSpectator: S.isSpectator,
     reconnectToken,
   };
 }

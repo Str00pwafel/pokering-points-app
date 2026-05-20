@@ -46,6 +46,23 @@ python3 server.py
 
 App starts at **http://localhost:8000**.
 
+## Development Checks
+
+Install the Python lint/format tools into your active virtual environment:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+Run the project checks before shipping changes:
+
+```bash
+npm run lint
+npm run format
+python3 -m ruff check .
+python3 -m compileall app version.py
+```
+
 ## How It Works
 
 1. Open the app and click **Start a Poker Session**
@@ -74,24 +91,24 @@ Host can switch decks before any votes are cast.
 
 All optional. Defaults work out of the box for local development.
 
-| Variable                 | Default            | Description                                                                                                               |
-| ------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `SERVER_HOST`            | `0.0.0.0`          | Bind address                                                                                                              |
-| `SERVER_PORT`            | `8000`             | Port                                                                                                                      |
-| `ENVIRONMENT`            | `development`      | Set `production` to disable auto-reload                                                                                   |
-| `CORS_ORIGINS`           | `*`                | Comma-separated allowed origins                                                                                           |
-| `TRUST_PROXY`            | `false`            | Enable `X-Forwarded-For` IP parsing (set `true` behind nginx/Caddy)                                                       |
-| `PROXY_DEPTH`            | `1`                | Number of reverse proxies in front; picks Nth-from-right hop of `X-Forwarded-For`. Only effective when `TRUST_PROXY=true` |
-| `LOG_DIR`                | `logs`             | Directory for audit log files                                                                                             |
-| `LOG_MAX_BYTES`          | `5242880`          | Max size per log file (bytes, default 5MB)                                                                                |
-| `LOG_BACKUP_COUNT`       | `3`                | Number of rotated log files to keep                                                                                       |
-| `LOG_RETENTION_DAYS`     | `30`               | Delete rotated log files older than N days. `0` disables                                                                  |
-| `RATE_LIMIT_WHITELIST`   | _(empty)_          | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`)                                     |
-| `MAX_RATE_LIMIT_ENTRIES` | `10000`            | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded                                                |
-| `THEME_TZ`               | `Europe/Amsterdam` | Timezone for date-based theme schedule (IANA tz name)                                                                     |
+| Variable                 | Default            | Description                                                                                                                            |
+| ------------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `SERVER_HOST`            | `0.0.0.0`          | Bind address                                                                                                                           |
+| `SERVER_PORT`            | `8000`             | Port                                                                                                                                   |
+| `ENVIRONMENT`            | `development`      | Set `production` to disable auto-reload                                                                                                |
+| `CORS_ORIGINS`           | `*`                | Comma-separated allowed origins                                                                                                        |
+| `TRUST_PROXY`            | `false`            | Enable `X-Forwarded-For` IP parsing (set `true` behind nginx/Caddy)                                                                    |
+| `PROXY_DEPTH`            | `1`                | Number of reverse proxies in front; picks Nth-from-right hop of `X-Forwarded-For`. Only effective when `TRUST_PROXY=true`              |
+| `LOG_DIR`                | `logs`             | Directory for audit log files                                                                                                          |
+| `LOG_MAX_BYTES`          | `5242880`          | Max size per log file (bytes, default 5MB)                                                                                             |
+| `LOG_BACKUP_COUNT`       | `3`                | Number of rotated log files to keep                                                                                                    |
+| `LOG_RETENTION_DAYS`     | `30`               | Delete rotated log files older than N days. `0` disables                                                                               |
+| `RATE_LIMIT_WHITELIST`   | _(empty)_          | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`)                                                  |
+| `MAX_RATE_LIMIT_ENTRIES` | `10000`            | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded                                                             |
+| `THEME_TZ`               | `Europe/Amsterdam` | Timezone for date-based theme schedule (IANA tz name)                                                                                  |
 | `TRUSTED_PROXY_IPS`      | _(empty)_          | Comma-separated IPs/CIDRs of trusted reverse proxies. Only honoured when `TRUST_PROXY=true`. Empty = trust all peers (backward compat) |
-| `METRICS_TOKEN`          | _(empty)_          | Bearer token for `/health` and `/metrics`. Empty = open (backward compat). Set to a secret in production                  |
-| `LOG_FORMAT`             | `text`             | Log format: `text` (human-readable) or `json` (one-line JSON per record)                                                  |
+| `METRICS_TOKEN`          | _(empty)_          | Bearer token for `/health` and `/metrics`. Empty = open (backward compat). Set to a secret in production                               |
+| `LOG_FORMAT`             | `text`             | Log format: `text` (human-readable) or `json` (one-line JSON per record)                                                               |
 
 No API keys or database credentials needed.
 
@@ -120,12 +137,12 @@ In development, `*` is accepted but credentials are auto-disabled (browsers reje
 
 ## Monitoring
 
-| Endpoint        | Auth required?                  | Description                                                     |
-| --------------- | ------------------------------- | --------------------------------------------------------------- |
-| `GET /healthz`  | No                              | Public liveness probe — safe for load-balancer / uptime checks  |
-| `GET /health`   | Bearer `METRICS_TOKEN` (if set) | JSON — uptime, active sessions, background-task staleness       |
-| `GET /metrics`  | Bearer `METRICS_TOKEN` (if set) | Prometheus text format — sessions, users, votes, countdowns     |
-| `GET /version`  | No                              | Current version + last 2 changelogs                             |
+| Endpoint       | Auth required?                  | Description                                                    |
+| -------------- | ------------------------------- | -------------------------------------------------------------- |
+| `GET /healthz` | No                              | Public liveness probe — safe for load-balancer / uptime checks |
+| `GET /health`  | Bearer `METRICS_TOKEN` (if set) | JSON — uptime, active sessions, background-task staleness      |
+| `GET /metrics` | Bearer `METRICS_TOKEN` (if set) | Prometheus text format — sessions, users, votes, countdowns    |
+| `GET /version` | No                              | Current version + last 2 changelogs                            |
 
 ## Themes
 

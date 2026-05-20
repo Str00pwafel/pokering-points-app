@@ -17,6 +17,7 @@ import {
   onDeckChanged,
   loadDecks,
   populateDeckSelector,
+  syncSelectedCardFromUserVote,
 } from './cards.js';
 import { updateToggleBtnLabel, renderUserList, updateVersionBadge } from './ui.js';
 import { showHostSettingsModal, confirmHostSettings } from './host.js';
@@ -71,9 +72,6 @@ function promptUsername() {
       const spectate = Boolean(document.getElementById('modalSpectateToggle')?.checked);
       saveSpectatorState(spectate);
       socket.emit('join', buildJoinPayload());
-      if (spectate) {
-        socket.emit('setSpectator', { sessionId, isSpectator: true });
-      }
     },
     true,
     false,
@@ -138,6 +136,20 @@ socket.on('userVoted', ({ clientId: votedId, voteChanged }) => {
   renderUserList(promptRename);
 });
 
+socket.on('selfState', (user) => {
+  if (!user || user.clientId !== S.clientId) return;
+  const index = S.currentUsers.findIndex((currentUser) => currentUser.clientId === S.clientId);
+  if (index >= 0) {
+    S.currentUsers[index] = { ...S.currentUsers[index], ...user };
+  } else {
+    S.currentUsers.push(user);
+  }
+  refreshMyUser();
+  saveSpectatorState(Boolean(S.myUser?.isSpectator));
+  syncSelectedCardFromUserVote();
+  renderUserList(promptRename);
+});
+
 socket.on('countdown', (seconds) => {
   document.getElementById('countdown').textContent = `Revealing in: ${seconds}`;
   document.getElementById('toggleVotingBtn').disabled = true;
@@ -165,7 +177,7 @@ socket.on('revealVotes', ({ users, stats }) => {
 
   const results = votingUsers
     .map((user, index) => {
-      const isOutlier = stats?.outliers?.includes(user.username);
+      const isOutlier = stats?.outliers?.includes(user.clientId);
       const delay = (index * 80).toString();
       const safeVote = escapeHTML(String(user.vote));
       return `
@@ -283,6 +295,9 @@ socket.on('joinFailed', ({ reason }) => {
 
 socket.on('actionFailed', ({ action, reason }) => {
   showToast(reason || `Action failed${action ? ` (${action})` : ''}`, 'error', 4000);
+  if (action === 'vote') {
+    syncSelectedCardFromUserVote();
+  }
 });
 
 socket.on('serverShutdown', ({ reason } = {}) => {

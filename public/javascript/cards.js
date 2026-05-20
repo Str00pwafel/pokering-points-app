@@ -48,6 +48,32 @@ export function selectCard(element, value) {
   socket.emit('vote', { sessionId, value });
 }
 
+export function syncSelectedCardFromUserVote() {
+  document.querySelectorAll('.card').forEach((card) => card.classList.remove('selected'));
+  S.selectedCard = null;
+  S.hasChangedVote = Boolean(S.myUser?.voteChanged);
+
+  if (S.votesRevealed || isUserSpectator(S.myUser)) {
+    applyVoteDimState();
+    return;
+  }
+
+  const vote = S.myUser?.vote;
+  if (vote === null || vote === undefined || vote === true) {
+    applyVoteDimState();
+    return;
+  }
+
+  const candidate = document
+    .getElementById('cardOptions')
+    ?.querySelector(`.card[data-value="${CSS.escape(String(vote))}"]`);
+  if (candidate) {
+    S.selectedCard = candidate;
+    candidate.classList.add('selected');
+  }
+  applyVoteDimState();
+}
+
 export function applyVoteDimState() {
   const cards = document.querySelectorAll('.card');
   cards.forEach((c) => {

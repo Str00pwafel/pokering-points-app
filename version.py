@@ -1,6 +1,19 @@
-__version__ = "2.0.4"
+__version__ = "2.0.5"
 
 __changelog__ = {
+    "2.0.5": [
+        "Security: mask pre-reveal vote values in usersUpdate; raw votes now travel only through revealVotes and private selfState sync",
+        "Fix: duplicate usernames no longer corrupt outlier highlighting or round reveal audit votes — outliers use clientId and audit stores vote records",
+        "Fix: rejected votes roll optimistic card selection back to the last server-confirmed vote state",
+        "Fix: host voting participation can no longer change mid-round after votes, countdown, or reveal state is active",
+        "Fix: join-as-spectator can no longer fail mid-round — isSpectator sent in join payload instead of redundant post-join emit",
+        "Security: upgrade Starlette to 0.49.x for CVE-2025-54121 and CVE-2025-62727 fixes",
+        "Security: upgrade vendored Socket.IO client to 4.8.3 to avoid the vulnerable ws dependency chain",
+        "Packages: upgrade FastAPI, Pydantic, pydantic-core, Uvicorn, python-socketio, python-engineio, idna, click, ESLint, Prettier, Ruff, and Black pins",
+        "Tooling: move no-control-regex disable directly above CONTROL_CHARS_RE so npm run lint passes",
+        "Tooling: format README.md with Prettier so npm run format passes",
+        "Tooling: add requirements-dev.txt and document Ruff/Python check commands in README",
+    ],
     "2.0.4": [
         "Accessibility: #countdown marked aria-live=assertive and aria-atomic=true — screen readers announce the countdown",
         "Accessibility: #modalBackdrop dialog gets aria-labelledby=modalMessage — screen readers name the dialog",
