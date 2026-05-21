@@ -200,7 +200,9 @@ async def create_session(request: Request):
         parsed = urlparse(check)
         check_origin = f"{parsed.scheme}://{parsed.netloc}"
         if check_origin not in CORS_ORIGINS:
-            logger.warning(f"CSRF check failed for POST /create: origin={origin!r} referer={referer!r}")
+            logger.warning(
+                f"CSRF check failed for POST /create: origin={origin!r} referer={referer!r}"
+            )
             return HTMLResponse(
                 content="<html><body><h1>Forbidden</h1></body></html>",
                 status_code=403,

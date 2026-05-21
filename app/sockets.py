@@ -50,12 +50,8 @@ def _users_payload(session: dict, *, reveal_votes: bool = False) -> list[dict]:
     return users
 
 
-async def _emit_users_update(
-    session_id: str, session: dict, *, reveal_votes: bool = False
-) -> None:
-    show_votes = reveal_votes or (
-        session.get("revealed") and not session.get("countdownActive")
-    )
+async def _emit_users_update(session_id: str, session: dict, *, reveal_votes: bool = False) -> None:
+    show_votes = reveal_votes or (session.get("revealed") and not session.get("countdownActive"))
     await sio.emit(
         "usersUpdate",
         _users_payload(session, reveal_votes=show_votes),
@@ -451,10 +447,13 @@ async def vote(sid: str, data: object) -> None:
         voting_participants = [
             participant
             for participant in sessions[session_id]["users"].values()
-            if not participant.get("isSpectator") and not (participant.get("isHost") and participant.get("wantsToVote") is False)
+            if not participant.get("isSpectator")
+            and not (participant.get("isHost") and participant.get("wantsToVote") is False)
         ]
 
-        all_voted = len(voting_participants) > 0 and all(participant["vote"] is not None for participant in voting_participants)
+        all_voted = len(voting_participants) > 0 and all(
+            participant["vote"] is not None for participant in voting_participants
+        )
 
         await sio.emit(
             "userVoted",
@@ -493,7 +492,9 @@ async def vote(sid: str, data: object) -> None:
                     if session is None:
                         return
                     deck = session.get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE]["values"])
-                    index_of = {deck_val: idx for idx, deck_val in enumerate(deck) if deck_val != "?"}
+                    index_of = {
+                        deck_val: idx for idx, deck_val in enumerate(deck) if deck_val != "?"
+                    }
 
                     voted = []
                     for user in session["users"].values():
@@ -672,7 +673,9 @@ async def requestNewRound(sid: str, data: object) -> None:
 async def changeDeck(sid: str, data: object) -> None:
     # Rate limiting: 20 deck changes per minute
     if not check_socket_rate_limit(sid, "changeDeck", limit=20, window=60):
-        logger.warning(f"changeDeck rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
+        logger.warning(
+            f"changeDeck rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}"
+        )
         return
 
     if not isinstance(data, dict):
@@ -721,7 +724,9 @@ async def changeDeck(sid: str, data: object) -> None:
 async def hostVotingDecision(sid: str, data: object) -> None:
     # Rate limiting: 10 voting decisions per minute
     if not check_socket_rate_limit(sid, "hostVotingDecision", limit=10, window=60):
-        logger.warning(f"hostVotingDecision rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
+        logger.warning(
+            f"hostVotingDecision rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}"
+        )
         return
 
     if not isinstance(data, dict):
@@ -773,7 +778,9 @@ async def hostVotingDecision(sid: str, data: object) -> None:
 @sio.event
 async def setSpectator(sid: str, data: object) -> None:
     if not check_socket_rate_limit(sid, "setSpectator", limit=10, window=60):
-        logger.warning(f"setSpectator rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
+        logger.warning(
+            f"setSpectator rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}"
+        )
         return
 
     if not isinstance(data, dict):
@@ -837,7 +844,9 @@ async def setSpectator(sid: str, data: object) -> None:
 @sio.event
 async def setVotingEnabled(sid: str, data: object) -> None:
     if not check_socket_rate_limit(sid, "setVotingEnabled", limit=20, window=60):
-        logger.warning(f"setVotingEnabled rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}")
+        logger.warning(
+            f"setVotingEnabled rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}"
+        )
         return
 
     if not isinstance(data, dict):

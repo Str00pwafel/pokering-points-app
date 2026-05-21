@@ -108,8 +108,8 @@ logger.addHandler(_file_handler)
 def _quote_val(value: object) -> str:
     """Quote audit field values that contain whitespace, quotes, or '='."""
     text = str(value)
-    if any(char in text for char in (' ', '\t', '\n', '"', '=', '\\')):
-        return '"' + text.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    if any(char in text for char in (" ", "\t", "\n", '"', "=", "\\")):
+        return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
     return text
 
 
