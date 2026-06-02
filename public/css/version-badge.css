@@ -1,7 +1,7 @@
-.version-badge {
+.version-badge,
+.howto-link {
   position: fixed;
   top: 8px;
-  right: 10px;
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 12px;
@@ -12,6 +12,19 @@
   user-select: none;
   cursor: pointer;
   text-decoration: none;
+}
+
+.version-badge {
+  right: 10px;
+}
+
+.howto-link {
+  right: 68px;
+}
+
+.version-badge:hover,
+.howto-link:hover {
+  opacity: 1;
 }
 
 .version-tooltip {
@@ -54,4 +67,32 @@
 .version-tooltip li::before {
   content: '•';
   margin-right: 4px;
+}
+
+.maintenance-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9998;
+  padding: 9px 48px;
+  background: var(--secondary-action);
+  color: var(--text-primary);
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.maintenance-banner.hidden {
+  display: none;
+}
+
+body:has(.maintenance-banner:not(.hidden)) .version-badge,
+body:has(.maintenance-banner:not(.hidden)) .howto-link {
+  top: 42px;
+}
+
+body:has(.maintenance-banner:not(.hidden)) .version-tooltip {
+  top: 66px;
 }

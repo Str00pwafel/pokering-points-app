@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>How-to — Pokering Points</title>
+    <link rel="stylesheet" href="/css/theme-variables.css" />
+    <link rel="stylesheet" href="/css/how-to.css" />
+    <script src="/javascript/theme-loader.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <a class="back" href="/">← Back to Pokering Points</a>
+
+      <section class="hero">
+        <p class="eyebrow">How-to guide</p>
+        <h1>Run a clean planning poker round without extra ceremony.</h1>
+        <p class="intro">
+          Pokering Points is a real-time estimation room for teams. Create a session, share the
+          link, let everyone vote privately, then reveal the spread together.
+        </p>
+      </section>
+
+      <section class="section">
+        <h2>Quick Start</h2>
+        <div class="steps">
+          <article class="step">
+            <span class="step-num">1</span>
+            <h3>Create a session</h3>
+            <p>Use Start a Poker Session. The first person to join becomes the host.</p>
+          </article>
+          <article class="step">
+            <span class="step-num">2</span>
+            <h3>Share the link</h3>
+            <p>Use Copy Session Link and send it to the team.</p>
+          </article>
+          <article class="step">
+            <span class="step-num">3</span>
+            <h3>Vote privately</h3>
+            <p>Pick a card. Others see that you voted, not what you picked.</p>
+          </article>
+          <article class="step">
+            <span class="step-num">4</span>
+            <h3>Review results</h3>
+            <p>Votes reveal automatically when all voters have selected a card.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>What the Controls Mean</h2>
+        <p class="lead">These are the icons and controls you will see during a session.</p>
+        <div class="icon-grid">
+          <div class="icon-row">
+            <span class="icon">🔁</span>
+            <div>
+              <h3>New Session</h3>
+              <p>Create a separate room. Existing users stay in the current room.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">➡️</span>
+            <div>
+              <h3>Start New Round</h3>
+              <p>Host-only. Clears votes and keeps the same room and users.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">🔒</span>
+            <div>
+              <h3>Lock Voting</h3>
+              <p>Host-only. Prevents new votes. After reveal, applies to the next round.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">🔓</span>
+            <div>
+              <h3>Unlock Voting</h3>
+              <p>Host-only. Reopens voting when no active votes block the change.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">👁</span>
+            <div>
+              <h3>Spectate</h3>
+              <p>Watch without being counted as a required voter.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">🗳️</span>
+            <div>
+              <h3>Join Voting</h3>
+              <p>Return from spectator mode before a round becomes active.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">🔗</span>
+            <div>
+              <h3>Copy Session Link</h3>
+              <p>Copy the current room URL to your clipboard.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">✏️</span>
+            <div>
+              <h3>Edit Username</h3>
+              <p>Rename yourself before you vote or before results are revealed.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">⇄</span>
+            <div>
+              <h3>Transfer Host</h3>
+              <p>Host-only. Pass control to an active voter from the user list.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">✓</span>
+            <div>
+              <h3>Voted</h3>
+              <p>The user has selected a card. The value stays hidden until reveal.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">⋯</span>
+            <div>
+              <h3>Waiting</h3>
+              <p>The user is still choosing a card.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">👑</span>
+            <div>
+              <h3>Host</h3>
+              <p>The host controls rounds, deck selection, and voting lock state.</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <span class="icon">↻</span>
+            <div>
+              <h3>Changed Vote</h3>
+              <p>The user used their one allowed vote change for the current round.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Typical Workflow</h2>
+        <ol class="workflow">
+          <li>The host creates a session and chooses whether they also vote.</li>
+          <li>The host selects the deck: Fibonacci, Hours, or T-shirt sizes.</li>
+          <li>Participants join as voters. Observers can join as spectators.</li>
+          <li>Everyone picks a card. Votes are hidden while the round is active.</li>
+          <li>When all voters have selected, a short countdown starts and results reveal.</li>
+          <li>The team discusses outliers, average, median, and consensus.</li>
+          <li>The host starts the next round when the team is ready.</li>
+        </ol>
+      </section>
+
+      <section class="section">
+        <h2>Examples</h2>
+        <div class="examples">
+          <article class="example">
+            <h3>Sprint planning</h3>
+            <p>Use Fibonacci for relative story points. Discuss large spreads before committing.</p>
+          </article>
+          <article class="example">
+            <h3>Time estimation</h3>
+            <p>Use Hours when the team needs an approximate implementation time.</p>
+          </article>
+          <article class="example">
+            <h3>Discovery sessions</h3>
+            <p>
+              Use T-shirt sizes for early uncertainty where exact numbers imply false precision.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Practical Notes</h2>
+        <div class="tips">
+          <article class="tip">
+            <h3>Changing votes</h3>
+            <p>You can switch to another card once per round before reveal.</p>
+          </article>
+          <article class="tip">
+            <h3>Changing decks</h3>
+            <p>The host can change decks before votes are cast, or after results are revealed.</p>
+          </article>
+          <article class="tip">
+            <h3>Dead sessions</h3>
+            <p>Old or expired session links show a clear message before asking for a username.</p>
+          </article>
+          <article class="tip">
+            <h3>Host handoff</h3>
+            <p>If the host leaves, the oldest active voter becomes host after reconnect grace.</p>
+          </article>
+        </div>
+        <p class="callout">
+          <strong>Privacy model:</strong> this app is intentionally lightweight. It has no accounts
+          and no database. Session state lives in memory and expires automatically.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

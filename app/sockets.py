@@ -67,6 +67,56 @@ async def _fail_action(sid: str, action: str, reason: str) -> None:
     await sio.emit("actionFailed", {"action": action, "reason": reason}, room=sid)
 
 
+def _host_transfer_candidates(session: dict) -> list[tuple[str, dict]]:
+    return [
+        (candidate_sid, candidate)
+        for candidate_sid, candidate in session["users"].items()
+        if not candidate.get("isHost") and not candidate.get("isSpectator")
+    ]
+
+
+async def _transfer_host(
+    session_id: str,
+    session: dict,
+    target_sid: str,
+    *,
+    previous_host_client_id: str | None,
+    reason: str,
+) -> None:
+    target = session["users"][target_sid]
+    previous_host_username = None
+    for user in session["users"].values():
+        if user.get("isHost"):
+            previous_host_username = user.get("username")
+        user["isHost"] = False
+
+    target["isHost"] = True
+    target["isSpectator"] = False
+    target.setdefault("wantsToVote", True)
+    session["hostClientId"] = target.get("clientId")
+    session["lastActivity"] = datetime.now(timezone.utc)
+
+    audit(
+        "host_transferred",
+        session_id=session_id,
+        previous_host_client_id=(previous_host_client_id or "")[:12],
+        previous_host=previous_host_username,
+        new_host=target.get("username", "unknown"),
+        new_host_client_id=(target.get("clientId") or "")[:12],
+        reason=reason,
+    )
+    await sio.emit(
+        "hostTransferred",
+        {
+            "username": target.get("username"),
+            "clientId": target.get("clientId"),
+            "reason": reason,
+        },
+        room=session_id,
+    )
+    await _emit_users_update(session_id, session)
+
+
 # ---------------------------------------------------------------------------
 # connect / disconnect
 # ---------------------------------------------------------------------------
@@ -109,7 +159,18 @@ async def _delayed_leave(session_id: str, client_id: str, username: str, was_hos
             was_host=was_host,
         )
         if was_host:
-            await sio.emit("hostLeft", room=session_id)
+            candidates = _host_transfer_candidates(session)
+            if candidates and session.get("hostClientId") == client_id:
+                target_sid, _target = candidates[0]
+                await _transfer_host(
+                    session_id,
+                    session,
+                    target_sid,
+                    previous_host_client_id=client_id,
+                    reason="auto",
+                )
+            else:
+                await sio.emit("hostLeft", room=session_id)
         else:
             await sio.emit("userLeft", {"username": username}, room=session_id)
     finally:
@@ -770,6 +831,60 @@ async def hostVotingDecision(sid: str, data: object) -> None:
         ip=socket_ip_map.get(sid),
     )
     await _emit_users_update(session_id, session)
+
+
+# ---------------------------------------------------------------------------
+# transferHost
+# ---------------------------------------------------------------------------
+@sio.event
+async def transferHost(sid: str, data: object) -> None:
+    if not check_socket_rate_limit(sid, "transferHost", limit=10, window=60):
+        logger.warning(
+            f"transferHost rate limit exceeded for socket {sid} ip={socket_ip_map.get(sid)}"
+        )
+        await _fail_action(sid, "transferHost", "Too many host transfer attempts")
+        return
+
+    if not isinstance(data, dict):
+        return
+
+    session_id = data.get("sessionId")
+    target_client_id = data.get("clientId")
+
+    if not isinstance(session_id, str) or not SESSION_ID_RE.fullmatch(session_id):
+        return
+    if not isinstance(target_client_id, str) or not CLIENT_ID_RE.fullmatch(target_client_id):
+        await _fail_action(sid, "transferHost", "Invalid transfer target")
+        return
+
+    session = sessions.get(session_id)
+    if session is None:
+        return
+
+    user = session["users"].get(sid)
+    if not user or not user.get("isHost"):
+        await _fail_action(sid, "transferHost", "Only host can transfer host role")
+        return
+
+    target_sid = None
+    target = None
+    for candidate_sid, candidate in _host_transfer_candidates(session):
+        if candidate.get("clientId") == target_client_id:
+            target_sid = candidate_sid
+            target = candidate
+            break
+
+    if target_sid is None or target is None:
+        await _fail_action(sid, "transferHost", "Host can only be transferred to an active voter")
+        return
+
+    await _transfer_host(
+        session_id,
+        session,
+        target_sid,
+        previous_host_client_id=user.get("clientId"),
+        reason="manual",
+    )
 
 
 # ---------------------------------------------------------------------------

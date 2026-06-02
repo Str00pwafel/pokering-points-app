@@ -1,5 +1,5 @@
 import { S } from './state.js';
-import { escapeHTML, setDocTitle } from './utils.js';
+import { setDocTitle } from './utils.js';
 import { isUserSpectator, applyVoteDimState } from './cards.js';
 
 export function updateVersionBadge() {
@@ -10,18 +10,11 @@ export function updateVersionBadge() {
     })
     .then((data) => {
       if (!data) return;
-      const { version, changelog } = data;
+      const { version, tooltipHtml } = data;
       const el = document.getElementById('versionBadge');
       if (el) el.textContent = `v${version}`;
       const tooltip = document.getElementById('versionTooltip');
-      if (tooltip && changelog) {
-        tooltip.innerHTML = Object.entries(changelog)
-          .map(
-            ([versionKey, items]) =>
-              `<h4>v${escapeHTML(versionKey)}</h4><ul>${items.map((changelogItem) => `<li>${escapeHTML(changelogItem)}</li>`).join('')}</ul>`
-          )
-          .join('');
-      }
+      if (tooltip && tooltipHtml) tooltip.innerHTML = tooltipHtml;
     })
     .catch((err) => console.error('Version badge error:', err));
 }
@@ -38,7 +31,7 @@ export function updateToggleBtnLabel() {
   }
 }
 
-export function renderUserList(onEditBtn) {
+export function renderUserList(onEditBtn, onTransferHost) {
   const users = S.currentUsers;
   const isHost = S.myUser?.isHost;
 
@@ -127,6 +120,16 @@ export function renderUserList(onEditBtn) {
 
     row.appendChild(status);
     row.appendChild(nameSpan);
+
+    if (isHost && onTransferHost && user.clientId !== S.clientId && !user.isHost && !isSpectator) {
+      const transferBtn = document.createElement('button');
+      transferBtn.className = 'user-edit-btn user-transfer-host-btn';
+      transferBtn.textContent = '⇄';
+      transferBtn.title = 'Transfer host';
+      transferBtn.setAttribute('aria-label', `Transfer host to ${user.username}`);
+      transferBtn.addEventListener('click', () => onTransferHost(user));
+      row.appendChild(transferBtn);
+    }
 
     if (user.clientId === S.clientId) {
       const editBtn = document.createElement('button');

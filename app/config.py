@@ -35,6 +35,18 @@ LOG_FORMAT: str = os.getenv("LOG_FORMAT", "text").strip().lower()
 THEME_TZ: str = os.getenv("THEME_TZ", "Europe/Amsterdam")
 
 # ---------------------------------------------------------------------------
+# Scheduled maintenance / deploy banner
+# ---------------------------------------------------------------------------
+MAINTENANCE_ENABLED: bool = os.getenv("MAINTENANCE_ENABLED", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+MAINTENANCE_AT: str = os.getenv("MAINTENANCE_AT", "").strip()
+MAINTENANCE_TZ: str = os.getenv("MAINTENANCE_TZ", THEME_TZ).strip() or THEME_TZ
+MAINTENANCE_MESSAGE: str = os.getenv("MAINTENANCE_MESSAGE", "Restart/deploy scheduled").strip()
+
+# ---------------------------------------------------------------------------
 # Rate limiting
 # ---------------------------------------------------------------------------
 # Prevents memory growth under IPv6 flood

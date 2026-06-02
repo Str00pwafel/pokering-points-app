@@ -1,6 +1,16 @@
-__version__ = "2.0.6"
+__version__ = "2.1.0"
 
 __changelog__ = {
+    "2.1.0": [
+        "Feature: add a user-facing How-to page with workflows, examples, and icon/control explanations",
+        "UX: add a How-to link next to the version/changelog badge on the welcome and session pages",
+        "Feature: host transfer — host can manually transfer control to an active voter",
+        "Feature: host transfer — when the host disconnects, the oldest active voter is promoted after reconnect grace",
+        "Feature: scheduled maintenance banner exposes /maintenance and warns users about planned deploy/restart time",
+        "Packages: update idna to 3.18 and clear venv-only drift except the Pydantic-managed pydantic-core hold",
+        "Docs: refresh README for current features, checks, how-to page, host transfer, and dual Git remotes",
+        "Simplification: game-page version tooltip now uses server-rendered tooltipHtml like the welcome page",
+    ],
     "2.0.6": [
         "UX: dead session links pre-check session existence before prompting for a username",
         "Simplification: /version now includes server-rendered tooltipHtml so welcome.js no longer duplicates changelog templating",

@@ -5,7 +5,7 @@ import os
 import re
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -22,6 +22,10 @@ from app.config import (
     DEFAULT_DECK_TYPE,
     ENVIRONMENT,
     LOG_RETENTION_DAYS,
+    MAINTENANCE_AT,
+    MAINTENANCE_ENABLED,
+    MAINTENANCE_MESSAGE,
+    MAINTENANCE_TZ,
     MAX_ACTIVE_SESSIONS,
     METRICS_TOKEN,
     RATE_LIMIT_CLEANUP_INTERVAL,
@@ -129,6 +133,28 @@ def _render_changelog_tooltip(changelog: dict[str, list[str]]) -> str:
         items_html = "".join(f"<li>{html.escape(item)}</li>" for item in items)
         blocks.append(f"<h4>v{html.escape(version_key)}</h4><ul>{items_html}</ul>")
     return "".join(blocks)
+
+
+def _next_maintenance_start() -> datetime | None:
+    if not MAINTENANCE_ENABLED or not MAINTENANCE_AT:
+        return None
+    try:
+        hour_raw, minute_raw = MAINTENANCE_AT.split(":", 1)
+        scheduled_time = time(hour=int(hour_raw), minute=int(minute_raw))
+        tz = ZoneInfo(MAINTENANCE_TZ)
+    except (ValueError, ZoneInfo.KeyError):
+        logger.warning(
+            "Invalid maintenance schedule: MAINTENANCE_AT=%r MAINTENANCE_TZ=%r",
+            MAINTENANCE_AT,
+            MAINTENANCE_TZ,
+        )
+        return None
+
+    now = datetime.now(tz)
+    starts_at = datetime.combine(now.date(), scheduled_time, tzinfo=tz)
+    if starts_at <= now:
+        starts_at += timedelta(days=1)
+    return starts_at
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +329,24 @@ async def get_version():
         "version": __version__,
         "changelog": changelog,
         "tooltipHtml": _render_changelog_tooltip(changelog),
+    }
+
+
+@app.get("/maintenance")
+async def get_maintenance():
+    starts_at = _next_maintenance_start()
+    enabled = starts_at is not None
+    display_time = starts_at.strftime("%H:%M") if starts_at else None
+    message = (
+        f"{MAINTENANCE_MESSAGE} at {display_time} Amsterdam time"
+        if enabled
+        else MAINTENANCE_MESSAGE
+    )
+    return {
+        "enabled": enabled,
+        "startsAt": starts_at.isoformat() if starts_at else None,
+        "timezone": MAINTENANCE_TZ,
+        "message": message,
     }
 
 

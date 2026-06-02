@@ -654,6 +654,14 @@ button:disabled {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.user-transfer-host-btn {
+  margin-left: auto;
+}
+
+.user-row:has(.user-transfer-host-btn) .user-vote-changed {
+  margin-left: 6px;
+}
+
 /* ── Host settings — creator username row ──────────────────── */
 .host-username-row {
   margin-bottom: 16px;

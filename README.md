@@ -1,13 +1,16 @@
 # Pokering Points
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.135-009485?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009485?logo=fastapi&logoColor=white)
 ![Socket.IO](https://img.shields.io/badge/Socket.IO-5.16-010101?logo=socket.io&logoColor=white)
 ![Status](https://img.shields.io/badge/status-active-success)
 
 Real-time planning poker estimation app. No accounts, no database — create a session, share the link, vote.
 
 Built with FastAPI + Socket.IO backend and vanilla JavaScript frontend.
+
+The app includes an in-app **How-to** page at `/how-to.html` with workflows, examples, controls,
+and icon explanations for users.
 
 <!-- Screenshot — add once available
 ![Pokering Points screenshot](docs/screenshot.png)
@@ -20,8 +23,8 @@ flowchart LR
     Client[Browser<br/>vanilla JS ES modules + Socket.IO client] -- HTTP --> FastAPI
     Client <-- WebSocket --> SocketIO
     subgraph Server [app/ package]
-        FastAPI[app/routes.py<br/>FastAPI routes: /, /create, /session/:id,<br/>/health, /metrics, /theme, /version, /decks]
-        SocketIO[app/sockets.py<br/>Socket.IO events: join, vote, changeDeck,<br/>requestNewRound, setVotingEnabled, setSpectator]
+        FastAPI[app/routes.py<br/>FastAPI routes: /, /create, /session/:id,<br/>/session/:id/exists, /how-to.html,<br/>/health, /metrics, /theme, /version, /decks]
+        SocketIO[app/sockets.py<br/>Socket.IO events: join, vote, changeDeck,<br/>requestNewRound, setVotingEnabled,<br/>setSpectator, hostVotingDecision, transferHost]
         State[(app/state.py<br/>sessions dict<br/>socket_ip_map<br/>rate-limit dicts)]
         Tasks[Background tasks<br/>session_cleanup<br/>rate_limit_cleanup<br/>log_retention_cleanup]
         FastAPI --> State
@@ -60,7 +63,7 @@ Run the project checks before shipping changes:
 npm run lint
 npm run format
 python3 -m ruff check .
-python3 -m compileall app version.py
+python3 -m compileall app server.py version.py
 ```
 
 ## How It Works
@@ -71,11 +74,17 @@ python3 -m compileall app version.py
 4. Votes auto-reveal with a 3-second countdown when everyone has voted
 5. See average, median, and outlier highlights
 6. Host clicks **Start New Round** to re-vote (same session, no redirect)
+7. Use **How-to** for a user-facing guide to controls, icons, and example workflows
 
 ### Roles
 
-- **Host** (first to join): controls rounds, deck type, voting lock, and participation toggle
+- **Host** (first to join): controls rounds, deck type, voting lock, participation toggle, and host transfer
 - **Participants**: join via shared link, pick cards, see results
+- **Spectators**: watch without being counted as required voters
+
+If the host disconnects and does not return within the reconnect grace period, the oldest active
+non-spectator participant is promoted automatically. The host can also manually transfer control to
+an active voter from the user list.
 
 ### Deck Types
 
@@ -91,24 +100,28 @@ Host can switch decks before any votes are cast.
 
 All optional. Defaults work out of the box for local development.
 
-| Variable                 | Default            | Description                                                                                                                            |
-| ------------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `SERVER_HOST`            | `0.0.0.0`          | Bind address                                                                                                                           |
-| `SERVER_PORT`            | `8000`             | Port                                                                                                                                   |
-| `ENVIRONMENT`            | `development`      | Set `production` to disable auto-reload                                                                                                |
-| `CORS_ORIGINS`           | `*`                | Comma-separated allowed origins                                                                                                        |
-| `TRUST_PROXY`            | `false`            | Enable `X-Forwarded-For` IP parsing (set `true` behind nginx/Caddy)                                                                    |
-| `PROXY_DEPTH`            | `1`                | Number of reverse proxies in front; picks Nth-from-right hop of `X-Forwarded-For`. Only effective when `TRUST_PROXY=true`              |
-| `LOG_DIR`                | `logs`             | Directory for audit log files                                                                                                          |
-| `LOG_MAX_BYTES`          | `5242880`          | Max size per log file (bytes, default 5MB)                                                                                             |
-| `LOG_BACKUP_COUNT`       | `3`                | Number of rotated log files to keep                                                                                                    |
-| `LOG_RETENTION_DAYS`     | `30`               | Delete rotated log files older than N days. `0` disables                                                                               |
-| `RATE_LIMIT_WHITELIST`   | _(empty)_          | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`)                                                  |
-| `MAX_RATE_LIMIT_ENTRIES` | `10000`            | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded                                                             |
-| `THEME_TZ`               | `Europe/Amsterdam` | Timezone for date-based theme schedule (IANA tz name)                                                                                  |
-| `TRUSTED_PROXY_IPS`      | _(empty)_          | Comma-separated IPs/CIDRs of trusted reverse proxies. Only honoured when `TRUST_PROXY=true`. Empty = trust all peers (backward compat) |
-| `METRICS_TOKEN`          | _(empty)_          | Bearer token for `/health` and `/metrics`. Empty = open (backward compat). Set to a secret in production                               |
-| `LOG_FORMAT`             | `text`             | Log format: `text` (human-readable) or `json` (one-line JSON per record)                                                               |
+| Variable                 | Default                    | Description                                                                                                                            |
+| ------------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `SERVER_HOST`            | `0.0.0.0`                  | Bind address                                                                                                                           |
+| `SERVER_PORT`            | `8000`                     | Port                                                                                                                                   |
+| `ENVIRONMENT`            | `development`              | Set `production` to disable auto-reload                                                                                                |
+| `CORS_ORIGINS`           | `*`                        | Comma-separated allowed origins                                                                                                        |
+| `TRUST_PROXY`            | `false`                    | Enable `X-Forwarded-For` IP parsing (set `true` behind nginx/Caddy)                                                                    |
+| `PROXY_DEPTH`            | `1`                        | Number of reverse proxies in front; picks Nth-from-right hop of `X-Forwarded-For`. Only effective when `TRUST_PROXY=true`              |
+| `LOG_DIR`                | `logs`                     | Directory for audit log files                                                                                                          |
+| `LOG_MAX_BYTES`          | `5242880`                  | Max size per log file (bytes, default 5MB)                                                                                             |
+| `LOG_BACKUP_COUNT`       | `3`                        | Number of rotated log files to keep                                                                                                    |
+| `LOG_RETENTION_DAYS`     | `30`                       | Delete rotated log files older than N days. `0` disables                                                                               |
+| `RATE_LIMIT_WHITELIST`   | _(empty)_                  | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`)                                                  |
+| `MAX_RATE_LIMIT_ENTRIES` | `10000`                    | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded                                                             |
+| `THEME_TZ`               | `Europe/Amsterdam`         | Timezone for date-based theme schedule (IANA tz name)                                                                                  |
+| `MAINTENANCE_ENABLED`    | `false`                    | Show a scheduled restart/deploy banner when enabled                                                                                    |
+| `MAINTENANCE_AT`         | _(empty)_                  | Scheduled restart/deploy time in `HH:MM`, interpreted in `MAINTENANCE_TZ`                                                              |
+| `MAINTENANCE_TZ`         | `THEME_TZ`                 | IANA timezone for maintenance banner scheduling                                                                                        |
+| `MAINTENANCE_MESSAGE`    | `Restart/deploy scheduled` | Banner message prefix                                                                                                                  |
+| `TRUSTED_PROXY_IPS`      | _(empty)_                  | Comma-separated IPs/CIDRs of trusted reverse proxies. Only honoured when `TRUST_PROXY=true`. Empty = trust all peers (backward compat) |
+| `METRICS_TOKEN`          | _(empty)_                  | Bearer token for `/health` and `/metrics`. Empty = open (backward compat). Set to a secret in production                               |
+| `LOG_FORMAT`             | `text`                     | Log format: `text` (human-readable) or `json` (one-line JSON per record)                                                               |
 
 No API keys or database credentials needed.
 
@@ -137,12 +150,23 @@ In development, `*` is accepted but credentials are auto-disabled (browsers reje
 
 ## Monitoring
 
-| Endpoint       | Auth required?                  | Description                                                    |
-| -------------- | ------------------------------- | -------------------------------------------------------------- |
-| `GET /healthz` | No                              | Public liveness probe — safe for load-balancer / uptime checks |
-| `GET /health`  | Bearer `METRICS_TOKEN` (if set) | JSON — uptime, active sessions, background-task staleness      |
-| `GET /metrics` | Bearer `METRICS_TOKEN` (if set) | Prometheus text format — sessions, users, votes, countdowns    |
-| `GET /version` | No                              | Current version + last 2 changelogs                            |
+| Endpoint           | Auth required?                  | Description                                                    |
+| ------------------ | ------------------------------- | -------------------------------------------------------------- |
+| `GET /healthz`     | No                              | Public liveness probe — safe for load-balancer / uptime checks |
+| `GET /health`      | Bearer `METRICS_TOKEN` (if set) | JSON — uptime, active sessions, background-task staleness      |
+| `GET /metrics`     | Bearer `METRICS_TOKEN` (if set) | Prometheus text format — sessions, users, votes, countdowns    |
+| `GET /version`     | No                              | Current version + last 2 changelogs                            |
+| `GET /maintenance` | No                              | Scheduled restart/deploy banner state                          |
+
+## User Pages
+
+| Page                   | Description                                              |
+| ---------------------- | -------------------------------------------------------- |
+| `/`                    | Welcome page and session creation                        |
+| `/session/{id}`        | Active planning poker room                               |
+| `/how-to.html`         | User guide with workflows, examples, controls, and icons |
+| `/changelog.html`      | Full changelog rendered from `version.py`                |
+| `/session/{id}/exists` | JSON pre-check used by the frontend for expired links    |
 
 ## Themes
 
@@ -175,6 +199,7 @@ Add custom themes by editing `themes.json` — no code changes needed.
 | Vote           | 30/min per socket  |
 | Change deck    | 20/min per socket  |
 | New round      | 30/hour per socket |
+| Transfer host  | 10/min per socket  |
 
 ## Tech Stack
 
@@ -183,6 +208,35 @@ Add custom themes by editing `themes.json` — no code changes needed.
 - **python-socketio** — real-time WebSocket layer
 - **Vanilla JS** frontend — no build step, no npm
 - **In-memory** sessions — no database required
+
+## Repository Mirrors
+
+This repository can be pushed to both GitHub and Forgejo. The current remote layout uses `origin`
+for GitHub and `forgejo` for the Forgejo mirror:
+
+```bash
+git push origin main --tags
+git push forgejo main --tags
+```
+
+Alternatively, configure multiple push URLs on one remote if you want a single `git push` to update
+both hosts.
+
+## Scheduled Deploy Banner
+
+Set these variables on the running app to warn users about a planned deploy/restart:
+
+```bash
+MAINTENANCE_ENABLED=true
+MAINTENANCE_AT=21:00
+MAINTENANCE_TZ=Europe/Amsterdam
+MAINTENANCE_MESSAGE="Restart/deploy scheduled"
+```
+
+The welcome and session pages poll `/maintenance` every 60 seconds and show a top banner while a
+schedule is active. Jenkins can then build/test immediately after push, wait until the same
+Amsterdam-time deployment window, optionally check `/metrics`, and restart the app at the announced
+time.
 
 ## Security
 

@@ -56,6 +56,18 @@ function promptRename() {
   );
 }
 
+function promptTransferHost(user) {
+  if (!user?.clientId || !user.username) return;
+  showModal(
+    `Transfer host role to ${user.username}?`,
+    () => {
+      socket.emit('transferHost', { sessionId, clientId: user.clientId });
+    },
+    false,
+    true
+  );
+}
+
 function promptUsername() {
   showModal(
     'Enter your name to join the session:',
@@ -138,7 +150,7 @@ socket.on('usersUpdate', (users) => {
     }
   }
 
-  renderUserList(promptRename);
+  renderUserList(promptRename, promptTransferHost);
 });
 
 socket.on('userVoted', ({ clientId: votedId, voteChanged }) => {
@@ -154,7 +166,7 @@ socket.on('userVoted', ({ clientId: votedId, voteChanged }) => {
   if (firstFlag && votedId !== S.clientId) {
     showToast(`${user.username} changed their vote`, 'info');
   }
-  renderUserList(promptRename);
+  renderUserList(promptRename, promptTransferHost);
 });
 
 socket.on('selfState', (user) => {
@@ -168,7 +180,7 @@ socket.on('selfState', (user) => {
   refreshMyUser();
   saveSpectatorState(Boolean(S.myUser?.isSpectator));
   syncSelectedCardFromUserVote();
-  renderUserList(promptRename);
+  renderUserList(promptRename, promptTransferHost);
 });
 
 socket.on('countdown', (seconds) => {
@@ -249,7 +261,7 @@ socket.on('revealVotes', ({ users, stats }) => {
   // stat values are numeric or server-controlled. textContent cannot produce the card layout.
   document.getElementById('votesDisplay').innerHTML = results;
   document.getElementById('voteSummary').innerHTML = summary;
-  renderUserList(promptRename);
+  renderUserList(promptRename, promptTransferHost);
 
   if (
     realVotesForStats.length >= 2 &&
@@ -296,6 +308,28 @@ socket.on('deckChanged', ({ deckType }) => {
 socket.on('hostLeft', () => {
   const overlay = document.getElementById('hostLeftOverlay');
   if (overlay) overlay.classList.remove('hidden');
+});
+
+socket.on('hostTransferred', ({ username, clientId, reason } = {}) => {
+  const overlay = document.getElementById('hostLeftOverlay');
+  if (overlay) overlay.classList.add('hidden');
+  if (!username) return;
+  if (clientId === S.clientId) {
+    S.hostSettingsShown = true;
+    showToast(
+      reason === 'auto' ? 'Host left. You are now the host.' : 'You are now the host.',
+      'success',
+      5000
+    );
+  } else {
+    showToast(
+      reason === 'auto'
+        ? `Host left. ${username} is now the host.`
+        : `${username} is now the host.`,
+      'info',
+      5000
+    );
+  }
 });
 
 socket.on('userLeft', ({ username: name }) => {
