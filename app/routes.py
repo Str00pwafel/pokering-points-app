@@ -123,6 +123,14 @@ _CHANGELOG_SHELL = """<!DOCTYPE html>
 """
 
 
+def _render_changelog_tooltip(changelog: dict[str, list[str]]) -> str:
+    blocks = []
+    for version_key, items in changelog.items():
+        items_html = "".join(f"<li>{html.escape(item)}</li>" for item in items)
+        blocks.append(f"<h4>v{html.escape(version_key)}</h4><ul>{items_html}</ul>")
+    return "".join(blocks)
+
+
 # ---------------------------------------------------------------------------
 # Middleware
 # ---------------------------------------------------------------------------
@@ -263,6 +271,11 @@ async def get_session(session_id: str):
     return FileResponse("public/index.html")
 
 
+@app.get("/session/{session_id}/exists")
+async def session_exists(session_id: str):
+    return {"exists": bool(SESSION_ID_RE.fullmatch(session_id) and session_id in sessions)}
+
+
 @app.get("/changelog.html", response_class=HTMLResponse)
 async def get_changelog():
     """Server-rendered changelog. Source of truth: version.py __changelog__.
@@ -289,6 +302,7 @@ async def get_version():
     return {
         "version": __version__,
         "changelog": changelog,
+        "tooltipHtml": _render_changelog_tooltip(changelog),
     }
 
 

@@ -84,6 +84,27 @@ function promptUsername() {
   if (toggle) toggle.checked = S.isSpectator;
 }
 
+async function checkSessionExists() {
+  try {
+    const res = await fetch(`/session/${encodeURIComponent(sessionId)}/exists`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return true;
+    const data = await res.json();
+    return Boolean(data.exists);
+  } catch (err) {
+    console.error('Session existence check failed:', err);
+    return true;
+  }
+}
+
+function showMissingSession() {
+  socket.disconnect();
+  showModal('Session not found or expired.', () => {
+    window.location.href = '/';
+  });
+}
+
 // ── Socket event handlers ─────────────────────────────────────────────────────
 
 socket.on('usersUpdate', (users) => {
@@ -315,7 +336,7 @@ socket.on('sessionState', ({ votingEnabled: enabled }) => {
 
 // ── Load handler ──────────────────────────────────────────────────────────────
 
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   updateVersionBadge();
   loadDecks();
 
@@ -388,6 +409,12 @@ window.addEventListener('load', () => {
   });
 
   // Join flow
+  const exists = await checkSessionExists();
+  if (!exists) {
+    showMissingSession();
+    return;
+  }
+
   const isCreator = sessionStorage.getItem('pokeringIsCreator') === '1';
   const hasReconnectToken = !!sessionStorage.getItem(`pokeringReconnectToken_${sessionId}`);
 

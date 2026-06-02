@@ -16,27 +16,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function escapeHTML(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
 (async () => {
   try {
     const res = await fetch('/version', { cache: 'no-store' });
     if (!res.ok) return;
-    const { version, changelog } = await res.json();
+    const { version, tooltipHtml } = await res.json();
     const el = document.getElementById('versionBadge');
     if (el) el.textContent = `v${version}`;
     const tooltip = document.getElementById('versionTooltip');
-    if (tooltip && changelog) {
-      tooltip.innerHTML = Object.entries(changelog)
-        .map(
-          ([versionKey, items]) =>
-            `<h4>v${escapeHTML(versionKey)}</h4><ul>${items.map((changelogItem) => `<li>${escapeHTML(changelogItem)}</li>`).join('')}</ul>`
-        )
-        .join('');
-    }
+    if (tooltip && tooltipHtml) tooltip.innerHTML = tooltipHtml;
   } catch {}
 })();

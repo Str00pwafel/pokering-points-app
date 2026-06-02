@@ -1,6 +1,12 @@
-__version__ = "2.0.5"
+__version__ = "2.0.6"
 
 __changelog__ = {
+    "2.0.6": [
+        "UX: dead session links pre-check session existence before prompting for a username",
+        "Simplification: /version now includes server-rendered tooltipHtml so welcome.js no longer duplicates changelog templating",
+        "Security: upgrade Starlette to 1.2.x for PYSEC-2026-161",
+        "Packages: refresh FastAPI, Uvicorn, python-socketio, python-engineio, idna, click, Ruff, and ESLint pins",
+    ],
     "2.0.5": [
         "Security: mask pre-reveal vote values in usersUpdate; raw votes now travel only through revealVotes and private selfState sync",
         "Fix: duplicate usernames no longer corrupt outlier highlighting or round reveal audit votes — outliers use clientId and audit stores vote records",
