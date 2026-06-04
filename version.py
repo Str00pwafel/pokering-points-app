@@ -1,6 +1,13 @@
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 __changelog__ = {
+    "2.1.1": [
+        "CI: add Jenkins dependency auditing for Python production requirements with pip-audit",
+        "CI: add Jenkins npm audit gating for high and critical frontend/tooling vulnerabilities",
+        "Tooling: add a versioned Jenkinsfile mirroring the live Pokering Jenkins pipeline",
+        "Tooling: add npm audit:deps and include pip-audit in requirements-dev.txt",
+        "Docs: document dependency audit checks in the development and Jenkins workflow",
+    ],
     "2.1.0": [
         "Feature: add a user-facing How-to page with workflows, examples, and icon/control explanations",
         "UX: add a How-to link next to the version/changelog badge on the welcome and session pages",

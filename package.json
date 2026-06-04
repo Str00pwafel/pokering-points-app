@@ -6,6 +6,7 @@
   "scripts": {
     "lint": "eslint public/javascript",
     "lint:fix": "eslint public/javascript --fix",
+    "audit:deps": "npm audit --audit-level=high",
     "format": "prettier --check \"public/**/*.{js,css,html}\" \"*.md\"",
     "format:fix": "prettier --write \"public/**/*.{js,css,html}\" \"*.md\""
   },

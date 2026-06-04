@@ -62,9 +62,16 @@ Run the project checks before shipping changes:
 ```bash
 npm run lint
 npm run format
+npm run audit:deps
 python3 -m ruff check .
+python3 -m black --check .
+python3 -m pip_audit -r requirements.txt
 python3 -m compileall app server.py version.py
 ```
+
+Jenkins runs the same checks before deployment, including Python dependency
+auditing with `pip-audit -r requirements.txt` and frontend/tooling dependency
+auditing with `npm audit --audit-level=high`.
 
 ## How It Works
 

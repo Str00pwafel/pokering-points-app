@@ -17,11 +17,13 @@ jobs:
           python-version: '3.13'
           cache: pip
       - name: Install tooling
-        run: pip install ruff black
+        run: pip install -r requirements-dev.txt
       - name: Ruff
         run: ruff check .
       - name: Black
         run: black --check .
+      - name: Dependency audit
+        run: pip-audit -r requirements.txt
 
   javascript:
     name: JS lint + format
@@ -38,3 +40,5 @@ jobs:
         run: npm run format
       - name: ESLint
         run: npm run lint
+      - name: Dependency audit
+        run: npm run audit:deps
