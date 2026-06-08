@@ -1,13 +1,16 @@
-__version__ = "2.1.2"
+__version__ = "2.1.3"
 
 __changelog__ = {
+    "2.1.3": [
+        "CI: loosen pip-audit dev requirement to support Jenkins jobs that preinstall pip-audit 2.9.0 while allowing newer 2.x locally",
+    ],
     "2.1.2": [
         "Fix: brief reconnects preserve user role, spectator setting, vote, and one-change state during reconnect grace",
         "Fix: reconnect tokens are stored only after join fully succeeds, avoiding stale tokens from failed joins",
         "Fix: existing clients can reconnect to a full session without being blocked by the max-user limit",
         "Fix: welcome-page version badge waits for DOMContentLoaded before updating",
         "Metrics: pokering_countdown_active now reports concurrent active countdown count",
-        "Packages: update Uvicorn to 0.49.0, Ruff to 0.15.16, and pip-audit to 2.10.0",
+        "Packages: update Uvicorn to 0.49.0 and Ruff to 0.15.16; allow pip-audit 2.9+",
         "Packages: refresh venv drift for aiohttp, cyclonedx-python-lib, and filelock; pydantic-core remains held by latest Pydantic",
         "Docs: document reconnect grace behavior and limit in README",
     ],
