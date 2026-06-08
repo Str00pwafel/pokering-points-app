@@ -515,7 +515,7 @@ pokering_votes_total {votes_total}
 # TYPE pokering_reveals_total counter
 pokering_reveals_total {reveals_total}
 
-# HELP pokering_countdown_active Whether a countdown is currently running
+# HELP pokering_countdown_active Number of countdowns currently running
 # TYPE pokering_countdown_active gauge
 pokering_countdown_active {countdown_active_gauge}
 """

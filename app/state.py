@@ -50,7 +50,7 @@ task_last_run: dict[str, datetime | None] = {
 # ---------------------------------------------------------------------------
 votes_total: int = 0  # incremented per new vote (not vote changes)
 reveals_total: int = 0  # incremented per revealVotes broadcast
-countdown_active: int = 0  # gauge: 1 while countdown running, 0 otherwise
+countdown_active: int = 0  # gauge: number of countdowns currently running
 
 
 # ---------------------------------------------------------------------------

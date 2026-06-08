@@ -93,6 +93,9 @@ If the host disconnects and does not return within the reconnect grace period, t
 non-spectator participant is promoted automatically. The host can also manually transfer control to
 an active voter from the user list.
 
+Brief disconnects within the reconnect grace period preserve the user's role, spectator setting,
+vote, and one-change state.
+
 ### Deck Types
 
 | Deck      | Values                    |
@@ -196,6 +199,7 @@ Add custom themes by editing `themes.json` — no code changes needed.
 | Session idle timeout     | 2 hours   |
 | Session absolute timeout | 24 hours  |
 | Session cleanup interval | 5 minutes |
+| Reconnect grace period   | 2 seconds |
 
 ## Rate Limits
 

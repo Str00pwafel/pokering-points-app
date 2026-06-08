@@ -14,9 +14,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(form);
     form.submit();
   });
+
+  updateVersionBadge();
 });
 
-(async () => {
+async function updateVersionBadge() {
   try {
     const res = await fetch('/version', { cache: 'no-store' });
     if (!res.ok) return;
@@ -26,4 +28,4 @@ document.addEventListener('DOMContentLoaded', () => {
     const tooltip = document.getElementById('versionTooltip');
     if (tooltip && tooltipHtml) tooltip.innerHTML = tooltipHtml;
   } catch {}
-})();
+}

@@ -33,6 +33,15 @@ _OUTLIER_STEP_THRESHOLD = 2
 # On reconnect within the grace window the old task is cancelled so only
 # one userLeft/hostLeft fires per client regardless of disconnect count.
 _pending_leave_tasks: dict[tuple[str, str], asyncio.Task] = {}
+_pending_leave_users: dict[tuple[str, str], dict] = {}
+
+
+def _pending_user_count(session_id: str, *, exclude_client_id: str | None = None) -> int:
+    return sum(
+        1
+        for pending_session_id, pending_client_id in _pending_leave_users
+        if pending_session_id == session_id and pending_client_id != exclude_client_id
+    )
 
 
 def _users_payload(session: dict, *, reveal_votes: bool = False) -> list[dict]:
@@ -175,6 +184,7 @@ async def _delayed_leave(session_id: str, client_id: str, username: str, was_hos
             await sio.emit("userLeft", {"username": username}, room=session_id)
     finally:
         _pending_leave_tasks.pop((session_id, client_id), None)
+        _pending_leave_users.pop((session_id, client_id), None)
 
 
 @sio.event
@@ -186,6 +196,7 @@ async def disconnect(sid: str) -> None:
             username = user.get("username", "unknown")
             was_host = user.get("isHost", False)
             client_id = user.get("clientId")
+            user_snapshot = dict(user)
             del sessions[session_id]["users"][sid]
             audit(
                 "user_disconnected",
@@ -200,6 +211,7 @@ async def disconnect(sid: str) -> None:
                 old_task = _pending_leave_tasks.pop(task_key, None)
                 if old_task and not old_task.done():
                     old_task.cancel()
+                _pending_leave_users[task_key] = user_snapshot
                 _pending_leave_tasks[task_key] = asyncio.create_task(
                     _delayed_leave(session_id, client_id, username, was_host)
                 )
@@ -253,7 +265,7 @@ async def join(sid: str, data: object) -> None:
 
     if is_new_client:
         new_token = secrets.token_urlsafe(32)
-        # Storage deferred until after session existence check to avoid stale accumulation (BUG-C)
+        # Storage deferred until the join succeeds to avoid stale accumulation.
 
     ip_addr = socket_ip_map.get(sid)
     now = datetime.now(timezone.utc)
@@ -277,15 +289,9 @@ async def join(sid: str, data: object) -> None:
         await sio.emit("joinFailed", {"reason": "Session not found"}, room=sid)
         return
 
-    if is_new_client and new_token:
-        _state.reconnect_tokens[(session_id, client_id)] = new_token
+    session = sessions[session_id]
 
     from app.config import MAX_USERS_PER_SESSION  # noqa: PLC0415
-
-    if len(sessions[session_id]["users"]) >= MAX_USERS_PER_SESSION:
-        logger.warning(f"Session {session_id} full: {MAX_USERS_PER_SESSION} users")
-        await sio.emit("joinFailed", {"reason": "Session is full"}, room=sid)
-        return
 
     username = sanitize_username(username)
     if username is None:
@@ -296,21 +302,14 @@ async def join(sid: str, data: object) -> None:
         )
         return
 
-    if sessions[session_id]["hostClientId"] is None:
-        sessions[session_id]["hostClientId"] = client_id
-        deck_type = data.get("deckType", DEFAULT_DECK_TYPE)
-        if deck_type in DECK_PRESETS:
-            sessions[session_id]["deck"] = list(DECK_PRESETS[deck_type]["values"])
-            sessions[session_id]["deckType"] = deck_type
-
-    is_host = client_id == sessions[session_id]["hostClientId"]
-
     preserved_vote = None
     preserved_wants_to_vote = None
     preserved_is_spectator = None
     preserved_vote_changed = False
     old_sid = None
-    for existing_sid, existing_user in sessions[session_id]["users"].items():
+    pending_key = (session_id, client_id)
+    pending_user = _pending_leave_users.get(pending_key)
+    for existing_sid, existing_user in session["users"].items():
         if existing_user.get("clientId") == client_id:
             old_sid = existing_sid
             preserved_vote = existing_user.get("vote")
@@ -318,9 +317,40 @@ async def join(sid: str, data: object) -> None:
             preserved_is_spectator = existing_user.get("isSpectator")
             preserved_vote_changed = bool(existing_user.get("voteChanged"))
             break
+
+    if old_sid is None and pending_user is not None:
+        preserved_vote = pending_user.get("vote")
+        preserved_wants_to_vote = pending_user.get("wantsToVote")
+        preserved_is_spectator = pending_user.get("isSpectator")
+        preserved_vote_changed = bool(pending_user.get("voteChanged"))
+
+    reserved_users = _pending_user_count(session_id, exclude_client_id=client_id)
+    if (
+        old_sid is None
+        and pending_user is None
+        and len(session["users"]) + reserved_users >= MAX_USERS_PER_SESSION
+    ):
+        logger.warning(f"Session {session_id} full: {MAX_USERS_PER_SESSION} users")
+        await sio.emit("joinFailed", {"reason": "Session is full"}, room=sid)
+        return
+
+    if session["hostClientId"] is None:
+        session["hostClientId"] = client_id
+        deck_type = data.get("deckType", DEFAULT_DECK_TYPE)
+        if deck_type in DECK_PRESETS:
+            session["deck"] = list(DECK_PRESETS[deck_type]["values"])
+            session["deckType"] = deck_type
+
+    is_host = client_id == session["hostClientId"]
     if old_sid:
-        sessions[session_id]["users"].pop(old_sid, None)
+        session["users"].pop(old_sid, None)
         socket_ip_map.pop(old_sid, None)
+
+    if old_sid or pending_user is not None:
+        old_task = _pending_leave_tasks.pop(pending_key, None)
+        if old_task and not old_task.done():
+            old_task.cancel()
+        _pending_leave_users.pop(pending_key, None)
         audit(
             "user_reconnected",
             session_id=session_id,
@@ -334,10 +364,10 @@ async def join(sid: str, data: object) -> None:
         # Lock spectator status during active rounds to prevent mid-round bypass via join payload.
         # setSpectator has the same guard; join must match it.
         round_active = (
-            sessions[session_id].get("revealed")
-            or sessions[session_id].get("countdownActive")
+            session.get("revealed")
+            or session.get("countdownActive")
             or preserved_vote is not None
-            or any(u.get("vote") is not None for u in sessions[session_id]["users"].values())
+            or any(u.get("vote") is not None for u in session["users"].values())
         )
         if round_active and preserved_is_spectator is not None:
             is_spectator = bool(preserved_is_spectator)
@@ -357,11 +387,13 @@ async def join(sid: str, data: object) -> None:
 
     if preserved_wants_to_vote is not None:
         user_data["wantsToVote"] = preserved_wants_to_vote
-    if "wantsToVote" in data:
+    if isinstance(data.get("wantsToVote"), bool):
         user_data["wantsToVote"] = data["wantsToVote"]
 
-    sessions[session_id]["users"][sid] = user_data
-    sessions[session_id]["lastActivity"] = datetime.now(timezone.utc)
+    session["users"][sid] = user_data
+    session["lastActivity"] = datetime.now(timezone.utc)
+    if is_new_client and new_token:
+        _state.reconnect_tokens[(session_id, client_id)] = new_token
 
     role = "host" if is_host else ("spectator" if is_spectator else "user")
     if not old_sid:
@@ -376,37 +408,37 @@ async def join(sid: str, data: object) -> None:
 
     await sio.enter_room(sid, session_id)
 
-    session_deck_type = sessions[session_id].get("deckType", DEFAULT_DECK_TYPE)
+    session_deck_type = session.get("deckType", DEFAULT_DECK_TYPE)
     await sio.emit("deckChanged", {"deckType": session_deck_type}, room=sid)
 
-    await _emit_users_update(session_id, sessions[session_id])
+    await _emit_users_update(session_id, session)
     await sio.emit(
         "sessionState",
-        {"votingEnabled": sessions[session_id].get("votingEnabled", True)},
+        {"votingEnabled": session.get("votingEnabled", True)},
         room=session_id,
     )
 
     # Sync countdown for mid-countdown joiners
-    if sessions[session_id].get("countdownActive"):
-        started = sessions[session_id].get("countdownStartedAt")
+    if session.get("countdownActive"):
+        started = session.get("countdownStartedAt")
         if started:
             elapsed = (datetime.now(timezone.utc) - started).total_seconds()
             remaining = max(0, 3 - int(elapsed))
             await sio.emit("countdown", remaining, room=sid)
 
     # Sync reveal state for late joiners
-    if sessions[session_id].get("revealed") and not sessions[session_id].get("countdownActive"):
+    if session.get("revealed") and not session.get("countdownActive"):
         await sio.emit(
             "revealVotes",
             {
-                "users": _users_payload(sessions[session_id], reveal_votes=True),
-                "stats": sessions[session_id].get("voteStats", {}),
+                "users": _users_payload(session, reveal_votes=True),
+                "stats": session.get("voteStats", {}),
             },
             room=sid,
         )
         await sio.emit(
             "usersUpdate",
-            _users_payload(sessions[session_id], reveal_votes=True),
+            _users_payload(session, reveal_votes=True),
             room=sid,
         )
 
@@ -540,7 +572,7 @@ async def vote(sid: str, data: object) -> None:
 
             async def countdown() -> None:
                 nonlocal count
-                _state.countdown_active = 1
+                _state.countdown_active += 1
                 try:
                     while count >= 0:
                         if session_id not in sessions:
@@ -639,7 +671,7 @@ async def vote(sid: str, data: object) -> None:
                     raise
 
                 finally:
-                    _state.countdown_active = 0
+                    _state.countdown_active = max(0, _state.countdown_active - 1)
 
             sessions[session_id]["countdownTask"] = asyncio.create_task(countdown())
 
