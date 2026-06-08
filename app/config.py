@@ -45,6 +45,7 @@ MAINTENANCE_ENABLED: bool = os.getenv("MAINTENANCE_ENABLED", "false").lower() in
 MAINTENANCE_AT: str = os.getenv("MAINTENANCE_AT", "").strip()
 MAINTENANCE_TZ: str = os.getenv("MAINTENANCE_TZ", THEME_TZ).strip() or THEME_TZ
 MAINTENANCE_MESSAGE: str = os.getenv("MAINTENANCE_MESSAGE", "Restart/deploy scheduled").strip()
+MAINTENANCE_FILE: str = os.getenv("MAINTENANCE_FILE", "config/maintenance.json").strip()
 
 # ---------------------------------------------------------------------------
 # Rate limiting

@@ -1,6 +1,10 @@
-__version__ = "2.1.3"
+__version__ = "2.1.4"
 
 __changelog__ = {
+    "2.1.4": [
+        "Feature: /maintenance can read config/maintenance.json on every request so Jenkins/Ansible can enable deploy banners without restarting the app",
+        "Docs: document no-restart maintenance scheduling flow and JSON examples for Jenkins/Ansible",
+    ],
     "2.1.3": [
         "CI: loosen pip-audit dev requirement to support Jenkins jobs that preinstall pip-audit 2.9.0 while allowing newer 2.x locally",
     ],

@@ -13,6 +13,9 @@ Thumbs.db
 # Logs
 logs/
 
+# Runtime maintenance banner state
+config/maintenance.json
+
 # Node
 node_modules/
 

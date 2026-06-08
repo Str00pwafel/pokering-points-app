@@ -24,6 +24,7 @@ from app.config import (
     LOG_RETENTION_DAYS,
     MAINTENANCE_AT,
     MAINTENANCE_ENABLED,
+    MAINTENANCE_FILE,
     MAINTENANCE_MESSAGE,
     MAINTENANCE_TZ,
     MAX_ACTIVE_SESSIONS,
@@ -135,18 +136,79 @@ def _render_changelog_tooltip(changelog: dict[str, list[str]]) -> str:
     return "".join(blocks)
 
 
-def _next_maintenance_start() -> datetime | None:
-    if not MAINTENANCE_ENABLED or not MAINTENANCE_AT:
+def _maintenance_bool(value: object, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "on")
+    return default
+
+
+def _maintenance_config() -> dict[str, object]:
+    """Return current maintenance settings.
+
+    A JSON file overrides environment values and is read on each request so
+    Jenkins/Ansible can enable the banner without restarting the app.
+    """
+    settings: dict[str, object] = {
+        "enabled": MAINTENANCE_ENABLED,
+        "at": MAINTENANCE_AT,
+        "startsAt": "",
+        "timezone": MAINTENANCE_TZ,
+        "message": MAINTENANCE_MESSAGE,
+    }
+    if not MAINTENANCE_FILE or not os.path.exists(MAINTENANCE_FILE):
+        return settings
+
+    try:
+        with open(MAINTENANCE_FILE) as f:
+            file_settings = json.load(f)
+    except Exception:
+        logger.warning("Invalid maintenance file: %s", MAINTENANCE_FILE, exc_info=True)
+        return settings
+
+    if not isinstance(file_settings, dict):
+        logger.warning(
+            "Invalid maintenance file: %s does not contain a JSON object", MAINTENANCE_FILE
+        )
+        return settings
+
+    if "enabled" in file_settings:
+        settings["enabled"] = _maintenance_bool(file_settings.get("enabled"), MAINTENANCE_ENABLED)
+    if isinstance(file_settings.get("at"), str):
+        settings["at"] = file_settings["at"].strip()
+    if isinstance(file_settings.get("startsAt"), str):
+        settings["startsAt"] = file_settings["startsAt"].strip()
+    if isinstance(file_settings.get("timezone"), str) and file_settings["timezone"].strip():
+        settings["timezone"] = file_settings["timezone"].strip()
+    if isinstance(file_settings.get("message"), str) and file_settings["message"].strip():
+        settings["message"] = file_settings["message"].strip()
+    return settings
+
+
+def _next_maintenance_start(settings: dict[str, object]) -> datetime | None:
+    enabled = bool(settings.get("enabled"))
+    starts_at_raw = str(settings.get("startsAt") or "").strip()
+    scheduled_at = str(settings.get("at") or "").strip()
+    timezone_name = str(settings.get("timezone") or MAINTENANCE_TZ)
+    if not enabled or (not scheduled_at and not starts_at_raw):
         return None
     try:
-        hour_raw, minute_raw = MAINTENANCE_AT.split(":", 1)
+        tz = ZoneInfo(timezone_name)
+        if starts_at_raw:
+            starts_at = datetime.fromisoformat(starts_at_raw.replace("Z", "+00:00"))
+            if starts_at.tzinfo is None:
+                starts_at = starts_at.replace(tzinfo=tz)
+            return starts_at.astimezone(tz)
+
+        hour_raw, minute_raw = scheduled_at.split(":", 1)
         scheduled_time = time(hour=int(hour_raw), minute=int(minute_raw))
-        tz = ZoneInfo(MAINTENANCE_TZ)
     except (ValueError, ZoneInfo.KeyError):
         logger.warning(
-            "Invalid maintenance schedule: MAINTENANCE_AT=%r MAINTENANCE_TZ=%r",
-            MAINTENANCE_AT,
-            MAINTENANCE_TZ,
+            "Invalid maintenance schedule: at=%r startsAt=%r timezone=%r",
+            scheduled_at,
+            starts_at_raw,
+            timezone_name,
         )
         return None
 
@@ -334,18 +396,18 @@ async def get_version():
 
 @app.get("/maintenance")
 async def get_maintenance():
-    starts_at = _next_maintenance_start()
+    settings = _maintenance_config()
+    starts_at = _next_maintenance_start(settings)
     enabled = starts_at is not None
     display_time = starts_at.strftime("%H:%M") if starts_at else None
-    message = (
-        f"{MAINTENANCE_MESSAGE} at {display_time} Amsterdam time"
-        if enabled
-        else MAINTENANCE_MESSAGE
-    )
+    message_prefix = str(settings.get("message") or MAINTENANCE_MESSAGE)
+    timezone_name = str(settings.get("timezone") or MAINTENANCE_TZ)
+    timezone_label = "Amsterdam time" if timezone_name == "Europe/Amsterdam" else timezone_name
+    message = f"{message_prefix} at {display_time} {timezone_label}" if enabled else message_prefix
     return {
         "enabled": enabled,
         "startsAt": starts_at.isoformat() if starts_at else None,
-        "timezone": MAINTENANCE_TZ,
+        "timezone": timezone_name,
         "message": message,
     }
 

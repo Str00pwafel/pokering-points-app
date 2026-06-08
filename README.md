@@ -129,6 +129,7 @@ All optional. Defaults work out of the box for local development.
 | `MAINTENANCE_AT`         | _(empty)_                  | Scheduled restart/deploy time in `HH:MM`, interpreted in `MAINTENANCE_TZ`                                                              |
 | `MAINTENANCE_TZ`         | `THEME_TZ`                 | IANA timezone for maintenance banner scheduling                                                                                        |
 | `MAINTENANCE_MESSAGE`    | `Restart/deploy scheduled` | Banner message prefix                                                                                                                  |
+| `MAINTENANCE_FILE`       | `config/maintenance.json`  | Optional live JSON override for maintenance banner state; read by `/maintenance` on every request, no restart needed                   |
 | `TRUSTED_PROXY_IPS`      | _(empty)_                  | Comma-separated IPs/CIDRs of trusted reverse proxies. Only honoured when `TRUST_PROXY=true`. Empty = trust all peers (backward compat) |
 | `METRICS_TOKEN`          | _(empty)_                  | Bearer token for `/health` and `/metrics`. Empty = open (backward compat). Set to a secret in production                               |
 | `LOG_FORMAT`             | `text`                     | Log format: `text` (human-readable) or `json` (one-line JSON per record)                                                               |
@@ -244,10 +245,40 @@ MAINTENANCE_TZ=Europe/Amsterdam
 MAINTENANCE_MESSAGE="Restart/deploy scheduled"
 ```
 
-The welcome and session pages poll `/maintenance` every 60 seconds and show a top banner while a
-schedule is active. Jenkins can then build/test immediately after push, wait until the same
-Amsterdam-time deployment window, optionally check `/metrics`, and restart the app at the announced
-time.
+For no-restart scheduling, have Jenkins/Ansible write `config/maintenance.json` atomically on the
+already-running app host. `/maintenance` reads this file on every request, and the welcome/session
+pages poll `/maintenance` every 60 seconds.
+
+Enable a maintenance window:
+
+```json
+{
+  "enabled": true,
+  "startsAt": "2026-06-08T21:00:00+02:00",
+  "timezone": "Europe/Amsterdam",
+  "message": "Restart/deploy scheduled"
+}
+```
+
+Or use a daily `HH:MM` time:
+
+```json
+{
+  "enabled": true,
+  "at": "21:00",
+  "timezone": "Europe/Amsterdam",
+  "message": "Restart/deploy scheduled"
+}
+```
+
+Disable after a successful deploy:
+
+```json
+{ "enabled": false }
+```
+
+Jenkins should build/test immediately after push, write the enabled file, wait until `startsAt`, run
+the Ansible deploy/restart, then write `{ "enabled": false }` after successful deployment.
 
 ## Security
 
