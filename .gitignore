@@ -1,10 +1,13 @@
 # Python junk
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Virtual environments
 env/
 .env/
+venv/
+.venv/
 
 # OS junk
 .DS_Store

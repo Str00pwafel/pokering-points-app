@@ -53,6 +53,10 @@ MAINTENANCE_FILE: str = os.getenv("MAINTENANCE_FILE", "config/maintenance.json")
 # Prevents memory growth under IPv6 flood
 MAX_RATE_LIMIT_ENTRIES: int = int(os.getenv("MAX_RATE_LIMIT_ENTRIES", "10000"))
 
+# Global per-IP limit for HTTP requests (all endpoints except /healthz).
+# Generous by default — a page load is ~15 requests. 0 disables.
+HTTP_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("HTTP_RATE_LIMIT_PER_MINUTE", "300"))
+
 _config_logger = logging.getLogger(__name__)
 
 # Comma-separated IPs or CIDR ranges (e.g. "192.168.1.0/24,10.0.0.1")
@@ -81,6 +85,13 @@ if _raw_trusted_proxies:
             except ValueError:
                 _config_logger.warning(f"Invalid TRUSTED_PROXY_IPS entry ignored: {_entry}")
 
+if TRUST_PROXY and not TRUSTED_PROXY_IPS:
+    _config_logger.warning(
+        "SECURITY: TRUST_PROXY=true with empty TRUSTED_PROXY_IPS — every direct peer can spoof "
+        "X-Forwarded-For, bypassing rate limits and impersonating whitelisted networks. "
+        "Set TRUSTED_PROXY_IPS to your reverse proxy address(es)."
+    )
+
 # ---------------------------------------------------------------------------
 # Session limits & timeouts
 # ---------------------------------------------------------------------------
@@ -103,6 +114,8 @@ RECONNECT_GRACE: int = 2  # seconds — delay leave broadcasts to tolerate brief
 # Username: 1-30 chars of letters (any script), digits, spaces, hyphens, apostrophes,
 # underscores. Control chars (incl \n, \t) stripped before regex check; leading/trailing
 # whitespace trimmed.
+# Mirrored client-side by USERNAME_RE/CONTROL_CHARS_RE in public/javascript/utils.js —
+# keep both in sync.
 USERNAME_RE: re.Pattern[str] = re.compile(r"^[\w\s\-']{1,30}$", re.UNICODE)
 _CONTROL_CHARS_RE: re.Pattern[str] = re.compile(
     r"[\x00-\x1F\x7F"  # ASCII control chars
@@ -132,6 +145,8 @@ def sanitize_username(raw: object) -> str | None:
 # ---------------------------------------------------------------------------
 # Deck presets
 # ---------------------------------------------------------------------------
+# Mirrored client-side by the fallback deckPresets/deckLabels in
+# public/javascript/state.js (used until /decks resolves) — keep both in sync.
 DECK_PRESETS: dict[str, dict] = {
     "fibonacci": {
         "label": "Fibonacci (1-21)",
@@ -166,9 +181,19 @@ if ALLOW_CREDENTIALS and "*" in CORS_ORIGINS:
 # ---------------------------------------------------------------------------
 CHANGELOG_EXPANDED_COUNT: int = 5  # most-recent N versions start expanded; older collapsed
 
+# Auto-reveal countdown duration in seconds. Used by the countdown loop and the
+# mid-countdown join sync — single source so the two sites cannot drift.
+COUNTDOWN_SECONDS: int = int(os.getenv("COUNTDOWN_SECONDS", "3"))
+
 # ---------------------------------------------------------------------------
 # Metrics auth
 # ---------------------------------------------------------------------------
 # Set to a non-empty value to require "Authorization: Bearer <token>" on /health and /metrics.
-# Leave empty to keep endpoints open (backward compat).
+# Empty keeps the endpoints open in development; production refuses to start without it
+# (same policy as the CORS wildcard rejection above).
 METRICS_TOKEN: str = os.getenv("METRICS_TOKEN", "").strip()
+if ENVIRONMENT == "production" and not METRICS_TOKEN:
+    raise RuntimeError(
+        "METRICS_TOKEN must be set in production: /health and /metrics disclose session counts, "
+        "rate-limit table sizes, and gameplay counters. Set METRICS_TOKEN to a secret value."
+    )

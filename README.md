@@ -65,13 +65,23 @@ npm run format
 npm run audit:deps
 python3 -m ruff check .
 python3 -m black --check .
+python3 -m pytest
 python3 -m pip_audit -r requirements.txt
 python3 -m compileall app server.py version.py
 ```
 
-Jenkins runs the same checks before deployment, including Python dependency
-auditing with `pip-audit -r requirements.txt` and frontend/tooling dependency
-auditing with `npm audit --audit-level=high`.
+Jenkins runs the same checks before deployment, including the pytest suite,
+Python dependency auditing with `pip-audit -r requirements.txt` and
+frontend/tooling dependency auditing with `npm audit --audit-level=high`.
+
+### Tests
+
+`tests/` covers the Socket.IO handlers (join/vote/reveal flow, reconnect
+preservation, host transfer, reconnect-token rejection), the HTTP endpoints
+(`/create` CSRF + rate limiting, `/maintenance` with malformed config files,
+`/health`/`/metrics` auth), and the pure validation/scheduling helpers.
+Handlers are invoked directly with `sio.emit` recorded — no real websocket
+transport. Both CI pipelines (GitHub Actions and Jenkins) gate on `pytest`.
 
 ## How It Works
 
@@ -108,31 +118,34 @@ Host can switch decks before any votes are cast.
 
 ## Environment Variables
 
-All optional. Defaults work out of the box for local development.
+Defaults work out of the box for local development. In production two variables are mandatory:
+`CORS_ORIGINS` (explicit origins) and `METRICS_TOKEN` — the app refuses to start without them.
 
-| Variable                 | Default                    | Description                                                                                                                            |
-| ------------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `SERVER_HOST`            | `0.0.0.0`                  | Bind address                                                                                                                           |
-| `SERVER_PORT`            | `8000`                     | Port                                                                                                                                   |
-| `ENVIRONMENT`            | `development`              | Set `production` to disable auto-reload                                                                                                |
-| `CORS_ORIGINS`           | `*`                        | Comma-separated allowed origins                                                                                                        |
-| `TRUST_PROXY`            | `false`                    | Enable `X-Forwarded-For` IP parsing (set `true` behind nginx/Caddy)                                                                    |
-| `PROXY_DEPTH`            | `1`                        | Number of reverse proxies in front; picks Nth-from-right hop of `X-Forwarded-For`. Only effective when `TRUST_PROXY=true`              |
-| `LOG_DIR`                | `logs`                     | Directory for audit log files                                                                                                          |
-| `LOG_MAX_BYTES`          | `5242880`                  | Max size per log file (bytes, default 5MB)                                                                                             |
-| `LOG_BACKUP_COUNT`       | `3`                        | Number of rotated log files to keep                                                                                                    |
-| `LOG_RETENTION_DAYS`     | `30`                       | Delete rotated log files older than N days. `0` disables                                                                               |
-| `RATE_LIMIT_WHITELIST`   | _(empty)_                  | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`)                                                  |
-| `MAX_RATE_LIMIT_ENTRIES` | `10000`                    | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded                                                             |
-| `THEME_TZ`               | `Europe/Amsterdam`         | Timezone for date-based theme schedule (IANA tz name)                                                                                  |
-| `MAINTENANCE_ENABLED`    | `false`                    | Show a scheduled restart/deploy banner when enabled                                                                                    |
-| `MAINTENANCE_AT`         | _(empty)_                  | Scheduled restart/deploy time in `HH:MM`, interpreted in `MAINTENANCE_TZ`                                                              |
-| `MAINTENANCE_TZ`         | `THEME_TZ`                 | IANA timezone for maintenance banner scheduling                                                                                        |
-| `MAINTENANCE_MESSAGE`    | `Restart/deploy scheduled` | Banner message prefix                                                                                                                  |
-| `MAINTENANCE_FILE`       | `config/maintenance.json`  | Optional live JSON override for maintenance banner state; read by `/maintenance` on every request, no restart needed                   |
-| `TRUSTED_PROXY_IPS`      | _(empty)_                  | Comma-separated IPs/CIDRs of trusted reverse proxies. Only honoured when `TRUST_PROXY=true`. Empty = trust all peers (backward compat) |
-| `METRICS_TOKEN`          | _(empty)_                  | Bearer token for `/health` and `/metrics`. Empty = open (backward compat). Set to a secret in production                               |
-| `LOG_FORMAT`             | `text`                     | Log format: `text` (human-readable) or `json` (one-line JSON per record)                                                               |
+| Variable                     | Default                    | Description                                                                                                                                                                          |
+| ---------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SERVER_HOST`                | `0.0.0.0`                  | Bind address                                                                                                                                                                         |
+| `SERVER_PORT`                | `8000`                     | Port                                                                                                                                                                                 |
+| `ENVIRONMENT`                | `development`              | Set `production` to disable auto-reload                                                                                                                                              |
+| `CORS_ORIGINS`               | `*`                        | Comma-separated allowed origins                                                                                                                                                      |
+| `TRUST_PROXY`                | `false`                    | Enable `X-Forwarded-For` IP parsing (set `true` behind nginx/Caddy)                                                                                                                  |
+| `PROXY_DEPTH`                | `1`                        | Number of reverse proxies in front; picks Nth-from-right hop of `X-Forwarded-For`. Only effective when `TRUST_PROXY=true`                                                            |
+| `LOG_DIR`                    | `logs`                     | Directory for audit log files                                                                                                                                                        |
+| `LOG_MAX_BYTES`              | `5242880`                  | Max size per log file (bytes, default 5MB)                                                                                                                                           |
+| `LOG_BACKUP_COUNT`           | `3`                        | Number of rotated log files to keep                                                                                                                                                  |
+| `LOG_RETENTION_DAYS`         | `30`                       | Delete rotated log files older than N days. `0` disables                                                                                                                             |
+| `RATE_LIMIT_WHITELIST`       | _(empty)_                  | Comma-separated IPs/CIDRs to bypass all rate limits (e.g., `192.168.1.0/24,10.0.0.1`)                                                                                                |
+| `MAX_RATE_LIMIT_ENTRIES`     | `10000`                    | Cap on tracked IPs/sockets for rate limiting; oldest evicted when exceeded                                                                                                           |
+| `THEME_TZ`                   | `Europe/Amsterdam`         | Timezone for date-based theme schedule (IANA tz name)                                                                                                                                |
+| `MAINTENANCE_ENABLED`        | `false`                    | Show a scheduled restart/deploy banner when enabled                                                                                                                                  |
+| `MAINTENANCE_AT`             | _(empty)_                  | Scheduled restart/deploy time in `HH:MM`, interpreted in `MAINTENANCE_TZ`                                                                                                            |
+| `MAINTENANCE_TZ`             | `THEME_TZ`                 | IANA timezone for maintenance banner scheduling                                                                                                                                      |
+| `MAINTENANCE_MESSAGE`        | `Restart/deploy scheduled` | Banner message prefix                                                                                                                                                                |
+| `MAINTENANCE_FILE`           | `config/maintenance.json`  | Optional live JSON override for maintenance banner state; read by `/maintenance` on every request, no restart needed                                                                 |
+| `TRUSTED_PROXY_IPS`          | _(empty)_                  | Comma-separated IPs/CIDRs of trusted reverse proxies. Only honoured when `TRUST_PROXY=true`. Empty = trust all peers (backward compat; logs a prominent security warning at startup) |
+| `METRICS_TOKEN`              | _(empty)_                  | Bearer token for `/health` and `/metrics`. Empty keeps them open in development; **production refuses to start without it**                                                          |
+| `LOG_FORMAT`                 | `text`                     | Log format: `text` (human-readable) or `json` (one-line JSON per record)                                                                                                             |
+| `COUNTDOWN_SECONDS`          | `3`                        | Auto-reveal countdown duration in seconds                                                                                                                                            |
+| `HTTP_RATE_LIMIT_PER_MINUTE` | `300`                      | Global per-IP limit across all HTTP endpoints (except `/healthz`). `0` disables                                                                                                      |
 
 No API keys or database credentials needed.
 
@@ -204,14 +217,21 @@ Add custom themes by editing `themes.json` — no code changes needed.
 
 ## Rate Limits
 
-| Action         | Limit              |
-| -------------- | ------------------ |
-| Create session | 3s cooldown per IP |
-| Join session   | 5s cooldown per IP |
-| Vote           | 30/min per socket  |
-| Change deck    | 20/min per socket  |
-| New round      | 30/hour per socket |
-| Transfer host  | 10/min per socket  |
+| Action         | Limit                                          |
+| -------------- | ---------------------------------------------- |
+| Create session | 3s cooldown per IP                             |
+| Join session   | 5s cooldown per (IP, client); new clients only |
+| Vote           | 30/min per (IP, client)                        |
+| Change deck    | 20/min per (IP, client)                        |
+| New round      | 30/hour per (IP, client), host requests only   |
+| Transfer host  | 10/min per (IP, client)                        |
+| Any HTTP route | 300/min per IP (`HTTP_RATE_LIMIT_PER_MINUTE`)  |
+
+Socket limits key on (IP, clientId) after join so users behind a shared
+non-whitelisted NAT do not consume each other's budgets; before a clientId is
+known they fall back to bare IP, and to socket ID when no IP is available.
+`RATE_LIMIT_WHITELIST` bypasses everything — make sure your office/VPN egress
+CIDR is whitelisted in the deployment (Ansible) config.
 
 ## Tech Stack
 
@@ -298,8 +318,9 @@ the Ansible deploy/restart, then write `{ "enabled": false }` after successful d
 - Socket IDs (SIDs) never sent to clients — `usersUpdate` and `revealVotes` payloads emit a list of user objects, not SID-keyed dicts
 - `TRUSTED_PROXY_IPS` allowlist gates `X-Forwarded-For` trust — direct clients cannot spoof IP to bypass rate limits
 - `POST /create` validates `Origin`/`Referer` against `CORS_ORIGINS` in non-wildcard deployments (CSRF protection)
-- `/health` and `/metrics` require `Authorization: Bearer <METRICS_TOKEN>` when `METRICS_TOKEN` is set
-- Socket rate limits keyed by IP (fall back to SID) — limits persist across reconnections
+- `/health` and `/metrics` require `Authorization: Bearer <METRICS_TOKEN>` when `METRICS_TOKEN` is set; production refuses to start without a token. Token comparison is constant-time (`secrets.compare_digest`)
+- Socket rate limits keyed by (IP, clientId) with IP/SID fallback — limits persist across reconnections without pooling NAT users
+- Global per-IP HTTP rate limit (`HTTP_RATE_LIMIT_PER_MINUTE`, default 300/min) covers read-only endpoints; `/maintenance` config is mtime-cached so polling costs a `stat()`, not a read+parse
 - `max_http_buffer_size` capped at 64 KB — limits memory amplification from oversized Socket.IO frames
 - Modal messages use `textContent` by default — HTML only rendered for trusted static strings (`allowHtml=true`)
 - `X-Request-ID` header sanitised to `[A-Za-z0-9_-]` max 32 chars before propagation — prevents log injection
@@ -308,6 +329,13 @@ the Ansible deploy/restart, then write `{ "enabled": false }` after successful d
 
 ### Audit logs & PII
 
-- Logs include IPs (for rate-limit forensics) and user-chosen usernames. No email/tokens logged
-- Rotated files deleted after `LOG_RETENTION_DAYS` (default 30). Adjust for your compliance needs
-- For GDPR/privacy: document retention in your hosting terms; reduce `LOG_RETENTION_DAYS` if required
+- Audit events record user-chosen usernames, truncated client IDs (16 chars), and **masked** IPs —
+  IPv4 keeps the first two octets (`10.1.x.x`), IPv6 the first two hextets. Full addresses are
+  never written to audit events; they are only held in memory for rate limiting. No email/tokens logged
+- **Purpose**: the audit trail exists for abuse investigation (rate-limit forensics, host-takeover
+  disputes) and operational debugging — not analytics
+- **Retention**: rotated files are deleted after `LOG_RETENTION_DAYS` (default 30 days — a
+  deliberate balance between investigation window and data minimisation). Reduce if your
+  compliance requirements demand it
+- For GDPR/privacy questions (lawful basis, retention policy wording in hosting terms), consult
+  your legal/privacy team — the defaults here are engineering choices, not compliance advice

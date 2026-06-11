@@ -1,5 +1,4 @@
 const THEME_CACHE_KEY = 'pokeringThemeCache';
-const THEME_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function domReady(fn) {
   if (document.readyState !== 'loading') fn();
@@ -13,24 +12,33 @@ function applyTheme(theme) {
   }
   const logo = document.querySelector('img.logo');
   if (logo && theme.logo) {
-    logo.src = `images/${theme.logo}`;
+    // Absolute path: relative 'images/…' breaks on nested paths like /session/<id>
+    logo.src = `/images/${theme.logo}`;
     if (theme.name === 'Christmas' && theme.decorations) {
       addChristmasDecorations(logo, theme.decorations);
     } else if (theme.name === 'Koningsdag' && theme.decorations) {
       addKoningsdagDecorations(logo, theme.decorations);
+    } else {
+      // Theme without decorations replacing a decorated one (e.g. stale
+      // Christmas cache revalidated to Default) — remove leftovers.
+      cleanupDecorations(logo);
     }
   }
 }
 
 (async function loadTheme() {
-  // Cache lookup — skip network if fresh. Version header stored for future invalidation use.
+  // Stale-while-revalidate: apply the cached theme immediately (no flash of
+  // default colors), then always fetch /theme and re-apply only if it changed.
+  // This replaces the old 1h TTL, which kept a stale theme across date-based
+  // theme switches.
+  let cachedTheme = null;
   try {
     const raw = localStorage.getItem(THEME_CACHE_KEY);
     if (raw) {
       const cached = JSON.parse(raw);
-      if (cached && cached.ts && Date.now() - cached.ts < THEME_CACHE_TTL_MS && cached.theme) {
+      if (cached && cached.theme) {
+        cachedTheme = cached.theme;
         domReady(() => applyTheme(cached.theme));
-        return;
       }
     }
   } catch {
@@ -45,7 +53,9 @@ function applyTheme(theme) {
     }
     const theme = await response.json();
     const version = response.headers.get('X-App-Version') || '';
-    domReady(() => applyTheme(theme));
+    if (!cachedTheme || JSON.stringify(theme) !== JSON.stringify(cachedTheme)) {
+      domReady(() => applyTheme(theme));
+    }
     try {
       localStorage.setItem(THEME_CACHE_KEY, JSON.stringify({ theme, version, ts: Date.now() }));
     } catch {

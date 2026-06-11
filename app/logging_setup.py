@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import logging
 import logging.handlers
@@ -105,6 +106,26 @@ logger.addHandler(_file_handler)
 # ---------------------------------------------------------------------------
 # audit() helper
 # ---------------------------------------------------------------------------
+def mask_ip(value: object) -> object:
+    """Truncate an IP for audit logging (GDPR data minimisation).
+
+    IPs in audit events exist for rate-limit forensics, which doesn't need the
+    full address. IPv4 keeps the first two octets (10.1.x.x); IPv6 keeps the
+    first two hextets. Non-IP values pass through unchanged.
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        addr = ipaddress.ip_address(value)
+    except ValueError:
+        return value
+    if addr.version == 4:
+        octets = str(addr).split(".")
+        return f"{octets[0]}.{octets[1]}.x.x"
+    hextets = addr.exploded.split(":")
+    return f"{hextets[0]}:{hextets[1]}:x:x:x:x:x:x"
+
+
 def _quote_val(value: object) -> str:
     """Quote audit field values that contain whitespace, quotes, or '='."""
     text = str(value)
@@ -120,12 +141,15 @@ def audit(event: str, **fields: object) -> None:
     JSON mode: extras become top-level fields.
     Keys colliding with stdlib LogRecord attrs are prefixed with ``x_`` so
     they survive JSON-mode formatting (record.__dict__ iteration skips
-    reserved keys).
+    reserved keys). ``ip`` values are truncated via mask_ip() — audit events
+    never store full client addresses.
     """
     clean: dict[str, object] = {}
     for k, v in fields.items():
         if v is None:
             continue
+        if k == "ip":
+            v = mask_ip(v)
         safe_key = f"x_{k}" if k in _RESERVED_LOG_ATTRS else k
         clean[safe_key] = v
     parts = [f"{k}={_quote_val(v)}" for k, v in clean.items()]

@@ -8,7 +8,7 @@ from app.config import (
     TRUST_PROXY,
     TRUSTED_PROXY_IPS,
 )
-from app.state import socket_ip_map, socket_rate_limits
+from app.state import socket_client_map, socket_ip_map, socket_rate_limits
 
 
 def _pick_forwarded_hop(xff_value: str) -> str | None:
@@ -80,7 +80,10 @@ def is_ip_whitelisted(ip_str: str | None) -> bool:
 def check_socket_rate_limit(sid: str, action: str, limit: int = 30, window: int = 60) -> bool:
     """Return True if the action is within rate limits for this socket.
 
-    Keyed by IP when available so rate limits persist across reconnections.
+    Keyed by (ip, clientId) once the socket has joined, so users behind a shared
+    non-whitelisted NAT don't consume each other's limits, while a single client
+    cycling sockets still hits the same bucket. Falls back to bare IP before a
+    clientId is known (pre-join), and to SID when no IP is available.
     Whitelisted IPs always pass. Modifies socket_rate_limits in-place.
     Uses LRU order: recently-active keys are moved to the end so eviction
     removes the least recently used key, not an arbitrary insertion-order entry.
@@ -89,7 +92,13 @@ def check_socket_rate_limit(sid: str, action: str, limit: int = 30, window: int 
     if is_ip_whitelisted(ip):
         return True
 
-    key = ip if ip else sid
+    client_id = socket_client_map.get(sid)
+    if ip and client_id:
+        key = f"{ip}|{client_id}"
+    elif ip:
+        key = ip
+    else:
+        key = sid
     now = datetime.now(timezone.utc)
 
     if key not in socket_rate_limits:

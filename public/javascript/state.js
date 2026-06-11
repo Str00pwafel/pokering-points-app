@@ -31,7 +31,9 @@ function migrateStorageKeys() {
 
 migrateStorageKeys();
 
-export const sessionId = window.location.pathname.split('/').pop();
+// filter(Boolean) tolerates trailing slashes (/session/<id>/ → '<id>', not '')
+// which would otherwise silently create a new session instead of joining.
+export const sessionId = window.location.pathname.split('/').filter(Boolean).pop();
 
 // Shared mutable game state — imported by all modules as `import { S } from './state.js'`.
 export const S = {
@@ -64,6 +66,7 @@ export const S = {
   votingEnabled: true,
   votesRevealed: false,
   pendingVotingEnabled: null,
+  pendingDeckType: null, // deck picked post-reveal; applied on next round like pendingVotingEnabled
   selectedCard: null,
   hasChangedVote: false,
   deckInitialized: false,

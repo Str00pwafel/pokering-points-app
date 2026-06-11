@@ -5,9 +5,10 @@ import os
 import re
 import secrets
 import uuid
+from collections import defaultdict
 from datetime import datetime, time, timedelta, timezone
 from urllib.parse import urlparse
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
@@ -21,6 +22,7 @@ from app.config import (
     DECK_PRESETS,
     DEFAULT_DECK_TYPE,
     ENVIRONMENT,
+    HTTP_RATE_LIMIT_PER_MINUTE,
     LOG_RETENTION_DAYS,
     MAINTENANCE_AT,
     MAINTENANCE_ENABLED,
@@ -57,7 +59,7 @@ def _check_metrics_auth(request: Request) -> bool:
     if not METRICS_TOKEN:
         return True
     auth = request.headers.get("authorization", "")
-    return auth == f"Bearer {METRICS_TOKEN}"
+    return secrets.compare_digest(auth, f"Bearer {METRICS_TOKEN}")
 
 
 # ---------------------------------------------------------------------------
@@ -144,12 +146,20 @@ def _maintenance_bool(value: object, default: bool) -> bool:
     return default
 
 
+# (path, mtime) → parsed settings. Same pattern as load_theme_config: live edits
+# still apply without a restart (mtime changes), but steady-state requests cost a
+# stat() instead of a full read+parse — the client polls /maintenance every 60s.
+_maintenance_cache: tuple[str, float, dict] | None = None
+
+
 def _maintenance_config() -> dict[str, object]:
     """Return current maintenance settings.
 
-    A JSON file overrides environment values and is read on each request so
-    Jenkins/Ansible can enable the banner without restarting the app.
+    A JSON file overrides environment values; cached by mtime so Jenkins/Ansible
+    can enable the banner without restarting the app.
     """
+    global _maintenance_cache
+
     settings: dict[str, object] = {
         "enabled": MAINTENANCE_ENABLED,
         "at": MAINTENANCE_AT,
@@ -161,6 +171,12 @@ def _maintenance_config() -> dict[str, object]:
         return settings
 
     try:
+        current_mtime = os.path.getmtime(MAINTENANCE_FILE)
+        if _maintenance_cache is not None:
+            cached_path, cached_mtime, cached_settings = _maintenance_cache
+            if cached_path == MAINTENANCE_FILE and cached_mtime == current_mtime:
+                return dict(cached_settings)
+
         with open(MAINTENANCE_FILE) as f:
             file_settings = json.load(f)
     except Exception:
@@ -183,6 +199,7 @@ def _maintenance_config() -> dict[str, object]:
         settings["timezone"] = file_settings["timezone"].strip()
     if isinstance(file_settings.get("message"), str) and file_settings["message"].strip():
         settings["message"] = file_settings["message"].strip()
+    _maintenance_cache = (MAINTENANCE_FILE, current_mtime, dict(settings))
     return settings
 
 
@@ -203,7 +220,7 @@ def _next_maintenance_start(settings: dict[str, object]) -> datetime | None:
 
         hour_raw, minute_raw = scheduled_at.split(":", 1)
         scheduled_time = time(hour=int(hour_raw), minute=int(minute_raw))
-    except (ValueError, ZoneInfo.KeyError):
+    except (ValueError, ZoneInfoNotFoundError):
         logger.warning(
             "Invalid maintenance schedule: at=%r startsAt=%r timezone=%r",
             scheduled_at,
@@ -222,6 +239,37 @@ def _next_maintenance_start(settings: dict[str, object]) -> datetime | None:
 # ---------------------------------------------------------------------------
 # Middleware
 # ---------------------------------------------------------------------------
+_http_hits: defaultdict = defaultdict(list)  # ip → recent request timestamps
+
+
+@app.middleware("http")
+async def global_http_rate_limit(request: Request, call_next):
+    """Light global per-IP rate limit covering all HTTP endpoints.
+
+    Read-only endpoints (/maintenance, /theme, /decks, …) previously had no
+    limit at all. /healthz is exempt (load-balancer probes); whitelisted IPs
+    bypass. Socket.IO traffic is routed by the engineio ASGI wrapper and never
+    reaches this middleware.
+    """
+    if HTTP_RATE_LIMIT_PER_MINUTE <= 0 or request.url.path == "/healthz":
+        return await call_next(request)
+    ip = get_client_ip(request)
+    if not ip or is_ip_whitelisted(ip):
+        return await call_next(request)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=60)
+    hits = [t for t in _http_hits[ip] if t > cutoff]
+    if len(hits) >= HTTP_RATE_LIMIT_PER_MINUTE:
+        _http_hits[ip] = hits
+        return PlainTextResponse(
+            "Too Many Requests", status_code=429, headers={"Retry-After": "60"}
+        )
+    hits.append(now)
+    _http_hits[ip] = hits
+    _bound_dict(_http_hits)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
     raw = request.headers.get("x-request-id", "")
@@ -357,6 +405,14 @@ async def get_session(session_id: str):
             status_code=400,
         )
     return FileResponse("public/index.html")
+
+
+@app.get("/session/{session_id}/")
+async def get_session_trailing_slash(session_id: str):
+    # Shared links sometimes pick up a trailing slash; without this route the
+    # static catch-all mount 404s, and the client treats '' as a missing session
+    # ID and silently creates a new session instead of joining the linked one.
+    return RedirectResponse(f"/session/{session_id}", status_code=308)
 
 
 @app.get("/session/{session_id}/exists")

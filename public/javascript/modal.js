@@ -35,16 +35,28 @@ export function trapFocus(container) {
   };
 }
 
-export function showModal(
-  message,
-  onConfirm,
-  withInput = false,
-  yesNoMode = false,
-  hideCancel = false,
-  prefill = '',
-  allowHtml = false,
-  withSpectateToggle = false
-) {
+/**
+ * Show the shared modal.
+ *
+ * @param {string} message — modal body (textContent unless allowHtml)
+ * @param {Function} [onConfirm] — called on confirm; in yesNoMode called with true/false
+ * @param {object} [options]
+ * @param {boolean} [options.withInput] — show a username text input
+ * @param {boolean} [options.yesNoMode] — Yes/No buttons, onConfirm(boolean)
+ * @param {boolean} [options.hideCancel] — hide the cancel button (and disable Escape)
+ * @param {string}  [options.prefill] — initial input value
+ * @param {boolean} [options.allowHtml] — render message as HTML (trusted static strings only)
+ * @param {boolean} [options.withSpectateToggle] — show the "join as spectator" toggle
+ */
+export function showModal(message, onConfirm, options = {}) {
+  const {
+    withInput = false,
+    yesNoMode = false,
+    hideCancel = false,
+    prefill = '',
+    allowHtml = false,
+    withSpectateToggle = false,
+  } = options;
   const backdrop = document.getElementById('modalBackdrop');
   const messageEl = document.getElementById('modalMessage');
   const errorEl = document.getElementById('modalError');

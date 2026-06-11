@@ -49,10 +49,7 @@ function promptRename() {
       showToast(`Username changed to "${S.username}"`, 'success');
       socket.emit('join', buildJoinPayload());
     },
-    true,
-    false,
-    false,
-    S.username
+    { withInput: true, prefill: S.username }
   );
 }
 
@@ -60,11 +57,11 @@ function promptTransferHost(user) {
   if (!user?.clientId || !user.username) return;
   showModal(
     `Transfer host role to ${user.username}?`,
-    () => {
-      socket.emit('transferHost', { sessionId, clientId: user.clientId });
+    (confirmed) => {
+      // yesNoMode invokes the callback for No (false) as well — only act on Yes
+      if (confirmed) socket.emit('transferHost', { sessionId, clientId: user.clientId });
     },
-    false,
-    true
+    { yesNoMode: true }
   );
 }
 
@@ -85,12 +82,7 @@ function promptUsername() {
       saveSpectatorState(spectate);
       socket.emit('join', buildJoinPayload());
     },
-    true,
-    false,
-    true,
-    S.username,
-    false,
-    true
+    { withInput: true, hideCancel: true, prefill: S.username, withSpectateToggle: true }
   );
   const toggle = document.getElementById('modalSpectateToggle');
   if (toggle) toggle.checked = S.isSpectator;
@@ -277,6 +269,7 @@ socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
   S.hasChangedVote = false;
   S.votesRevealed = false;
   S.pendingVotingEnabled = null;
+  S.pendingDeckType = null;
   const votingChanged = S.votingEnabled !== enabled;
   S.votingEnabled = enabled;
 
@@ -286,10 +279,9 @@ socket.on('roundReset', ({ deckType, votingEnabled: enabled }) => {
   document.getElementById('voteSummary').innerHTML = '';
 
   if (deckType && S.deckPresets[deckType]) {
-    S.currentDeckType = deckType;
-    const sel = document.getElementById('deckSelector');
-    if (sel) sel.value = deckType;
-    renderCards();
+    // Full deck swap via onDeckChanged — it also updates S.cardValues, which a
+    // plain currentDeckType assignment misses (cards would keep the old deck).
+    onDeckChanged(deckType);
   }
 
   updateVotingLockState();
@@ -375,7 +367,7 @@ window.addEventListener('load', async () => {
   loadDecks();
 
   document.getElementById('newRoundBtn').addEventListener('click', () => {
-    const payload = { sessionId, deckType: S.currentDeckType };
+    const payload = { sessionId, deckType: S.pendingDeckType ?? S.currentDeckType };
     if (S.pendingVotingEnabled !== null) payload.votingEnabled = S.pendingVotingEnabled;
     socket.emit('requestNewRound', payload);
   });
@@ -430,15 +422,21 @@ window.addEventListener('load', async () => {
         sessionStorage.setItem('pokeringIsCreator', '1');
         postCreate();
       },
-      false,
-      false,
-      false,
-      '',
-      true // allowHtml — trusted static string, no user data interpolated
+      { allowHtml: true } // trusted static string, no user data interpolated
     );
   });
 
   document.getElementById('deckSelector').addEventListener('change', (e) => {
+    if (S.votesRevealed) {
+      // Same pattern as the voting-lock toggle: the server rejects changeDeck
+      // while votes exist, so post-reveal picks are queued for the next round.
+      S.pendingDeckType = e.target.value;
+      showToast(
+        `Deck changes to ${S.deckLabels[e.target.value] || e.target.value} next round`,
+        'info'
+      );
+      return;
+    }
     socket.emit('changeDeck', { sessionId, deckType: e.target.value });
   });
 
@@ -492,10 +490,13 @@ document.addEventListener('keydown', (e) => {
   } else if (e.key === 'Enter') {
     if (tag === 'BUTTON' || tag === 'A') return;
     if (!S.votesRevealed) return;
+    // Host-only action: non-host Enter presses must not emit requestNewRound
+    // (the server rejects them anyway, but they'd waste a round-trip).
+    if (!S.myUser?.isHost) return;
     const btn = document.getElementById('newRoundBtn');
     if (!btn || btn.disabled || btn.classList.contains('hidden')) return;
     e.preventDefault();
-    const payload = { sessionId, deckType: S.currentDeckType };
+    const payload = { sessionId, deckType: S.pendingDeckType ?? S.currentDeckType };
     if (S.pendingVotingEnabled !== null) payload.votingEnabled = S.pendingVotingEnabled;
     socket.emit('requestNewRound', payload);
   }

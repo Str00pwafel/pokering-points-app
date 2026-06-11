@@ -1,6 +1,32 @@
-__version__ = "2.1.4"
+__version__ = "2.2.0"
 
 __changelog__ = {
+    "2.2.0": [
+        "Tests: add pytest suite (82 tests) covering socket flows (join/vote/reveal, reconnect preservation, host transfer, reconnect-token rejection), HTTP endpoints (/create CSRF + rate limit, /maintenance malformed files, /health auth), and pure validation/scheduling helpers",
+        "CI: pytest gates both pipelines — GitHub Actions and Jenkins now run tests before dependency audit and deploy",
+        "CI: GitHub Actions pinned by commit SHA to protect against tag-moving supply-chain attacks",
+        "CI: Jenkins infrastructure endpoints parameterized via POKERING_GIT_URL / POKERING_ANSIBLE_TARGET / POKERING_ANSIBLE_DIR global env vars; optional manual deploy approval via POKERING_REQUIRE_DEPLOY_APPROVAL=true",
+        "Fix: /maintenance no longer returns 500 on invalid schedule values — except clause referenced non-existent ZoneInfo.KeyError instead of ZoneInfoNotFoundError, so any timezone or time typo in config/maintenance.json broke the endpoint silently",
+        "Fix: crashed reveal countdown no longer locks the session permanently — unexpected exceptions now log, clear countdownActive, and emit a best-effort reveal so the host can start a new round",
+        "Fix: trailing slash in session links no longer silently creates a new session — client tolerates /session/<id>/ and the server 308-redirects it",
+        "Fix: clicking No in the transfer-host confirmation no longer transfers the host (yes/no modals invoke the callback for both answers)",
+        "Fix: non-integral float votes (e.g. 2.9) rejected instead of silently truncating to the lower deck value",
+        "Fix: duplicate usernames de-duplicated on join with a -2/-3 suffix — identical names were indistinguishable in the user list, toasts, and revealed votes",
+        "Fix: non-host Enter keypresses and requestNewRound attempts no longer consume the host's 30/hour new-round budget — host check now precedes the rate-limit hit on both client and server",
+        "Security: production refuses to start without METRICS_TOKEN — /health and /metrics disclose session counts and gameplay counters (same policy as the CORS wildcard rejection)",
+        "Security: metrics token compared with secrets.compare_digest instead of == (constant-time)",
+        "Security: prominent startup warning when TRUST_PROXY=true with empty TRUSTED_PROXY_IPS — that combination lets any direct peer spoof X-Forwarded-For",
+        "Security: global per-IP HTTP rate limit (HTTP_RATE_LIMIT_PER_MINUTE, default 300/min, /healthz exempt) covers previously unlimited read-only endpoints",
+        "Security: socket rate limits and the join cooldown keyed by (IP, clientId) — users behind a shared non-whitelisted NAT no longer pool each other's limits; reconnects with a valid token skip the join cooldown",
+        "Privacy: IPs in audit events masked (10.1.x.x style) — full addresses only held in memory for rate limiting; retention purpose and 30-day default documented in README",
+        "Refactor: 100-line countdown closure extracted from vote() into _run_countdown() and pure _compute_vote_stats(); countdown duration is a single COUNTDOWN_SECONDS config constant",
+        "Refactor: Session and User TypedDicts document the session model and optional-field lifecycle in app/state.py",
+        "Reliability: session_cleanup and rate_limit_cleanup iteration bodies exception-guarded — one malformed session can no longer kill a background task for the process lifetime",
+        "Reliability: /maintenance config cached by file mtime (same pattern as themes) — live edits still apply without restart, steady-state polling costs a stat() instead of read+parse",
+        "UX: theme loader switched to stale-while-revalidate — cached theme applies instantly, then refreshes from /theme, so date-based theme switches no longer stall behind the old 1h cache TTL; logo path made absolute",
+        "DX: showModal positional boolean soup replaced with an options object ({ withInput, yesNoMode, hideCancel, prefill, allowHtml, withSpectateToggle })",
+        "Docs: README documents test suite, new env vars (COUNTDOWN_SECONDS, HTTP_RATE_LIMIT_PER_MINUTE), production-mandatory METRICS_TOKEN, rate-limit keying, and audit log retention/purpose",
+    ],
     "2.1.4": [
         "Feature: /maintenance can read config/maintenance.json on every request so Jenkins/Ansible can enable deploy banners without restarting the app",
         "Docs: document no-restart maintenance scheduling flow and JSON examples for Jenkins/Ansible",

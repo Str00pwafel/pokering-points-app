@@ -52,18 +52,19 @@ export function renderUserList(onEditBtn, onTransferHost) {
   }
 
   document.getElementById('newRoundBtn').classList.toggle('hidden', !isHost);
-  document.getElementById('deckSelector').classList.remove('hidden');
+  // Host-only control — guests can't change the deck, so don't show it to them.
+  // The active deck is visible to everyone through the cards themselves.
+  const deckSelector = document.getElementById('deckSelector');
+  deckSelector.classList.toggle('hidden', !isHost);
   const toggleBtn = document.getElementById('toggleVotingBtn');
   toggleBtn.classList.toggle('hidden', !isHost);
 
   const hasVotes = users.some((user) => user.vote !== null);
 
   if (isHost) {
-    document.getElementById('deckSelector').disabled = hasVotes && !S.votesRevealed;
+    deckSelector.disabled = hasVotes && !S.votesRevealed;
     toggleBtn.disabled = hasVotes && !S.votesRevealed;
     updateToggleBtnLabel();
-  } else {
-    document.getElementById('deckSelector').disabled = true;
   }
 
   const spectateBtn = document.getElementById('toggleSpectateBtn');

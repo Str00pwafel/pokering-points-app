@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import app.state as _state
 from app.config import (
     CLIENT_ID_RE,
+    COUNTDOWN_SECONDS,
     DECK_PRESETS,
     DEFAULT_DECK_TYPE,
     RECONNECT_GRACE,
@@ -22,7 +23,7 @@ from app.rate_limit import (
     check_socket_rate_limit,
     is_ip_whitelisted,
 )
-from app.state import sessions, socket_ip_map
+from app.state import sessions, socket_client_map, socket_ip_map
 
 logger = logging.getLogger("pokering")
 
@@ -49,6 +50,11 @@ def _users_payload(session: dict, *, reveal_votes: bool = False) -> list[dict]:
 
     Pre-reveal presence updates expose only whether someone voted, not the
     vote value. Raw votes are only sent in revealVotes and private selfState.
+
+    Note: clientId of every user is broadcast to the whole room. Impersonation
+    is blocked solely by the reconnect token (join handler) — any future change
+    that relaxes the token check must also stop exposing other users' clientIds
+    here (e.g. switch UI keying to a server-generated public ID).
     """
     users = []
     for user in session["users"].values():
@@ -74,6 +80,33 @@ async def _emit_users_update(session_id: str, session: dict, *, reveal_votes: bo
 
 async def _fail_action(sid: str, action: str, reason: str) -> None:
     await sio.emit("actionFailed", {"action": action, "reason": reason}, room=sid)
+
+
+def _dedupe_username(session_id: str, session: dict, username: str, client_id: str) -> str:
+    """Make username unique within the session by suffixing -2, -3, … if taken.
+
+    The UI keys all human-facing output (user list, toasts, revealed votes) on
+    username, so two identical names are indistinguishable to users. Comparison
+    is case-insensitive; the suffix keeps the result within the 30-char limit.
+    Reconnects (same clientId, in-session or pending-leave) keep their name.
+    """
+    taken = {
+        u["username"].casefold()
+        for u in session["users"].values()
+        if u.get("clientId") != client_id
+    }
+    for (pending_session_id, pending_client_id), pending in _pending_leave_users.items():
+        if pending_session_id == session_id and pending_client_id != client_id:
+            taken.add(str(pending.get("username", "")).casefold())
+
+    if username.casefold() not in taken:
+        return username
+    for n in range(2, 100):
+        suffix = f"-{n}"
+        candidate = username[: 30 - len(suffix)].rstrip() + suffix
+        if candidate.casefold() not in taken:
+            return candidate
+    return username  # 98+ duplicates of one name — sessions cap at 100 users anyway
 
 
 def _host_transfer_candidates(session: dict) -> list[tuple[str, dict]]:
@@ -190,6 +223,7 @@ async def _delayed_leave(session_id: str, client_id: str, username: str, was_hos
 @sio.event
 async def disconnect(sid: str) -> None:
     disconnected_ip = socket_ip_map.pop(sid, None)
+    socket_client_map.pop(sid, None)
     for session_id in sessions:
         if sid in sessions[session_id]["users"]:
             user = sessions[session_id]["users"][sid]
@@ -273,16 +307,23 @@ async def join(sid: str, data: object) -> None:
     from app.config import JOIN_RATE_LIMIT  # noqa: PLC0415
     from app.state import last_join_time  # noqa: PLC0415
 
+    # Cooldown keyed per (ip, clientId) so distinct users behind one
+    # non-whitelisted NAT aren't serialized to one join per window. Known
+    # clients (valid reconnect token, checked above) skip the cooldown so
+    # reconnects and renames aren't rejected; they remain bounded by the
+    # 5/min join rate limit at the top of this handler.
+    join_cooldown_key = (ip_addr, client_id)
     if (
         ip_addr
+        and is_new_client
         and not is_ip_whitelisted(ip_addr)
-        and now - last_join_time[ip_addr] < JOIN_RATE_LIMIT
+        and now - last_join_time[join_cooldown_key] < JOIN_RATE_LIMIT
     ):
         await sio.emit("joinFailed", {"reason": "Too many join attempts. Please wait."}, room=sid)
         return
 
     if ip_addr:
-        last_join_time[ip_addr] = now
+        last_join_time[join_cooldown_key] = now
         _bound_dict(last_join_time)
 
     if session_id not in sessions:
@@ -345,6 +386,7 @@ async def join(sid: str, data: object) -> None:
     if old_sid:
         session["users"].pop(old_sid, None)
         socket_ip_map.pop(old_sid, None)
+        socket_client_map.pop(old_sid, None)
 
     if old_sid or pending_user is not None:
         old_task = _pending_leave_tasks.pop(pending_key, None)
@@ -376,6 +418,8 @@ async def join(sid: str, data: object) -> None:
         elif preserved_is_spectator is not None:
             is_spectator = bool(preserved_is_spectator)
 
+    username = _dedupe_username(session_id, session, username, client_id)
+
     user_data: dict = {
         "username": username,
         "vote": preserved_vote,
@@ -392,6 +436,9 @@ async def join(sid: str, data: object) -> None:
 
     session["users"][sid] = user_data
     session["lastActivity"] = datetime.now(timezone.utc)
+    # Rate limits key on (ip, clientId) from here on — see check_socket_rate_limit.
+    socket_client_map[sid] = client_id
+    _bound_dict(socket_client_map)
     if is_new_client and new_token:
         _state.reconnect_tokens[(session_id, client_id)] = new_token
 
@@ -423,7 +470,7 @@ async def join(sid: str, data: object) -> None:
         started = session.get("countdownStartedAt")
         if started:
             elapsed = (datetime.now(timezone.utc) - started).total_seconds()
-            remaining = max(0, 3 - int(elapsed))
+            remaining = max(0, COUNTDOWN_SECONDS - int(elapsed))
             await sio.emit("countdown", remaining, room=sid)
 
     # Sync reveal state for late joiners
@@ -452,8 +499,135 @@ async def join(sid: str, data: object) -> None:
 
 
 # ---------------------------------------------------------------------------
-# vote
+# vote / reveal countdown
 # ---------------------------------------------------------------------------
+def _compute_vote_stats(session: dict) -> tuple[dict, list[dict]]:
+    """Compute reveal statistics from the session's current votes.
+
+    Pure function over session state (no awaits, no emits) — covers the
+    average/median/outlier/consensus logic. Returns (vote_stats, voted) where
+    voted is the list of countable vote records ("?" and absent votes excluded)
+    used for the audit trail.
+    """
+    deck = session.get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE]["values"])
+    index_of = {deck_val: idx for idx, deck_val in enumerate(deck) if deck_val != "?"}
+
+    voted = []
+    for participant in session["users"].values():
+        vote_val = participant["vote"]
+        if vote_val == "?" or vote_val is None:
+            continue
+        if vote_val in index_of:
+            voted.append(
+                {
+                    "clientId": participant.get("clientId"),
+                    "username": participant.get("username"),
+                    "vote": vote_val,
+                }
+            )
+
+    vote_stats: dict = {}
+    if voted:
+        numeric_votes = [
+            record["vote"] for record in voted if isinstance(record["vote"], (int, float))
+        ]
+        if numeric_votes:
+            avg = sum(numeric_votes) / len(numeric_votes)
+            vote_stats["average"] = round(avg, 2)
+
+        sorted_indices = sorted(index_of[record["vote"]] for record in voted)
+        median_idx = sorted_indices[len(sorted_indices) // 2]
+        vote_stats["median"] = deck[median_idx]
+
+        vote_stats["outliers"] = [
+            record["clientId"]
+            for record in voted
+            if record["clientId"]
+            and abs(index_of[record["vote"]] - median_idx) >= _OUTLIER_STEP_THRESHOLD
+        ]
+
+    distinct = {record["vote"] for record in voted}
+    vote_stats["consensus"] = len(voted) > 0 and len(distinct) == 1
+    return vote_stats, voted
+
+
+async def _run_countdown(session_id: str) -> None:
+    """Broadcast the reveal countdown, then compute stats and emit revealVotes."""
+    count = COUNTDOWN_SECONDS
+    _state.countdown_active += 1
+    try:
+        while count >= 0:
+            if session_id not in sessions:
+                return
+            await sio.emit("countdown", count, room=session_id)
+            await asyncio.sleep(1)
+            count -= 1
+
+        session = sessions.get(session_id)
+        if session is None:
+            return
+
+        vote_stats, voted = _compute_vote_stats(session)
+        audit(
+            "round_revealed",
+            session_id=session_id,
+            round=session.get("roundCount", 1),
+            votes=voted,
+            average=vote_stats.get("average"),
+            median=vote_stats.get("median"),
+            outliers=vote_stats.get("outliers", []),
+            consensus=vote_stats["consensus"],
+            voter_count=len(voted),
+        )
+
+        session["voteStats"] = vote_stats
+        _state.reveals_total += 1
+        await sio.emit(
+            "revealVotes",
+            {
+                "users": _users_payload(session, reveal_votes=True),
+                "stats": vote_stats,
+            },
+            room=session_id,
+        )
+        # Clear after emit so requestNewRound cannot slip in between
+        # voteStats write and revealVotes emit and reset a just-revealed round.
+        # Late joiners connecting in this brief window get countdown-sync instead
+        # of reveal-sync, which is acceptable for a sub-second window.
+        session["countdownActive"] = False
+
+    except asyncio.CancelledError:
+        # requestNewRound cancelled us — clear session state so the new round
+        # can proceed and late joiners don't see a phantom countdown.
+        cancelled_session = sessions.get(session_id)
+        if cancelled_session is not None:
+            cancelled_session["countdownActive"] = False
+            cancelled_session.pop("countdownStartedAt", None)
+        raise
+
+    except Exception:
+        # Without this guard a crash leaves revealed+countdownActive set forever:
+        # requestNewRound returns early while countdownActive is set, dead-locking
+        # the session until idle timeout. Clear the flags and emit a best-effort
+        # reveal so connected clients aren't stuck on a frozen countdown.
+        logger.exception(f"Countdown crashed for session {session_id}")
+        crashed_session = sessions.get(session_id)
+        if crashed_session is not None:
+            crashed_session["countdownActive"] = False
+            crashed_session.pop("countdownStartedAt", None)
+            await sio.emit(
+                "revealVotes",
+                {
+                    "users": _users_payload(crashed_session, reveal_votes=True),
+                    "stats": crashed_session.get("voteStats", {}),
+                },
+                room=session_id,
+            )
+
+    finally:
+        _state.countdown_active = max(0, _state.countdown_active - 1)
+
+
 @sio.event
 async def vote(sid: str, data: object) -> None:
     # Rate limiting: 30 votes per minute
@@ -482,11 +656,12 @@ async def vote(sid: str, data: object) -> None:
         await _fail_action(sid, "vote", "Votes are already revealed")
         return
 
-    # Reject bools (isinstance(True, int) is True in Python) and non-finite floats
+    # Reject bools (isinstance(True, int) is True in Python), non-finite floats,
+    # and non-integral floats (2.9 must not silently truncate to vote 2)
     if isinstance(value, bool):
         await _fail_action(sid, "vote", "Invalid vote")
         return
-    if isinstance(value, float) and not math.isfinite(value):
+    if isinstance(value, float) and (not math.isfinite(value) or value != int(value)):
         await _fail_action(sid, "vote", "Invalid vote")
         return
 
@@ -562,118 +737,13 @@ async def vote(sid: str, data: object) -> None:
             sessions[session_id]["revealed"] = True
             sessions[session_id]["countdownActive"] = True
             sessions[session_id]["countdownStartedAt"] = datetime.now(timezone.utc)
-            count = 3
             audit(
                 "countdown_started",
                 session_id=session_id,
-                duration_s=count,
+                duration_s=COUNTDOWN_SECONDS,
                 round=sessions[session_id].get("roundCount", 1),
             )
-
-            async def countdown() -> None:
-                nonlocal count
-                _state.countdown_active += 1
-                try:
-                    while count >= 0:
-                        if session_id not in sessions:
-                            return
-                        await sio.emit("countdown", count, room=session_id)
-                        await asyncio.sleep(1)
-                        count -= 1
-
-                    session = sessions.get(session_id)
-                    if session is None:
-                        return
-                    deck = session.get("deck", DECK_PRESETS[DEFAULT_DECK_TYPE]["values"])
-                    index_of = {
-                        deck_val: idx for idx, deck_val in enumerate(deck) if deck_val != "?"
-                    }
-
-                    voted = []
-                    for user in session["users"].values():
-                        vote_val = user["vote"]
-                        if vote_val == "?" or vote_val is None:
-                            continue
-                        if vote_val in index_of:
-                            voted.append(
-                                {
-                                    "clientId": user.get("clientId"),
-                                    "username": user.get("username"),
-                                    "vote": vote_val,
-                                }
-                            )
-
-                    vote_stats: dict = {}
-                    if voted:
-                        numeric_votes = [
-                            record["vote"]
-                            for record in voted
-                            if isinstance(record["vote"], (int, float))
-                        ]
-                        if numeric_votes:
-                            avg = sum(numeric_votes) / len(numeric_votes)
-                            vote_stats["average"] = round(avg, 2)
-
-                        sorted_indices = sorted(index_of[record["vote"]] for record in voted)
-                        median_idx = sorted_indices[len(sorted_indices) // 2]
-                        vote_stats["median"] = deck[median_idx]
-
-                        vote_stats["outliers"] = [
-                            record["clientId"]
-                            for record in voted
-                            if record["clientId"]
-                            and abs(index_of[record["vote"]] - median_idx)
-                            >= _OUTLIER_STEP_THRESHOLD
-                        ]
-
-                    if session_id not in sessions:
-                        return
-
-                    distinct = {record["vote"] for record in voted}
-                    consensus = len(voted) > 0 and len(distinct) == 1
-                    vote_stats["consensus"] = consensus
-
-                    audit(
-                        "round_revealed",
-                        session_id=session_id,
-                        round=session.get("roundCount", 1),
-                        votes=voted,
-                        average=vote_stats.get("average"),
-                        median=vote_stats.get("median"),
-                        outliers=vote_stats.get("outliers", []),
-                        consensus=consensus,
-                        voter_count=len(voted),
-                    )
-
-                    session["voteStats"] = vote_stats
-                    _state.reveals_total += 1
-                    await sio.emit(
-                        "revealVotes",
-                        {
-                            "users": _users_payload(session, reveal_votes=True),
-                            "stats": vote_stats,
-                        },
-                        room=session_id,
-                    )
-                    # Clear after emit so requestNewRound cannot slip in between
-                    # voteStats write and revealVotes emit and reset a just-revealed round.
-                    # Late joiners connecting in this brief window get countdown-sync instead
-                    # of reveal-sync, which is acceptable for a sub-second window.
-                    session["countdownActive"] = False
-
-                except asyncio.CancelledError:
-                    # requestNewRound cancelled us — clear session state so the new round
-                    # can proceed and late joiners don't see a phantom countdown.
-                    cancelled_session = sessions.get(session_id)
-                    if cancelled_session is not None:
-                        cancelled_session["countdownActive"] = False
-                        cancelled_session.pop("countdownStartedAt", None)
-                    raise
-
-                finally:
-                    _state.countdown_active = max(0, _state.countdown_active - 1)
-
-            sessions[session_id]["countdownTask"] = asyncio.create_task(countdown())
+            sessions[session_id]["countdownTask"] = asyncio.create_task(_run_countdown(session_id))
 
 
 # ---------------------------------------------------------------------------
@@ -681,16 +751,6 @@ async def vote(sid: str, data: object) -> None:
 # ---------------------------------------------------------------------------
 @sio.event
 async def requestNewRound(sid: str, data: object) -> None:
-    # Rate limiting: 30 new rounds per hour
-    if not check_socket_rate_limit(sid, "requestNewRound", limit=30, window=3600):
-        logger.warning(f"New round rate limit exceeded for socket {sid}")
-        await sio.emit(
-            "actionFailed",
-            {"action": "newRound", "reason": "Too many new round requests"},
-            room=sid,
-        )
-        return
-
     if not isinstance(data, dict):
         return
 
@@ -714,6 +774,17 @@ async def requestNewRound(sid: str, data: object) -> None:
 
     # Block during countdown
     if old_session.get("countdownActive"):
+        return
+
+    # Rate limiting: 30 new rounds per hour. Checked after the host check so
+    # non-host requests (e.g. stray Enter keypresses) never consume the budget.
+    if not check_socket_rate_limit(sid, "requestNewRound", limit=30, window=3600):
+        logger.warning(f"New round rate limit exceeded for socket {sid}")
+        await sio.emit(
+            "actionFailed",
+            {"action": "newRound", "reason": "Too many new round requests"},
+            room=sid,
+        )
         return
 
     stale_task = old_session.pop("countdownTask", None)
