@@ -93,22 +93,28 @@ pipeline {
       }
     }
 
-    // Optional manual gate: set POKERING_REQUIRE_DEPLOY_APPROVAL=true in
-    // Jenkins global env to require a human click before production deploys.
-    // Default keeps the existing deploy-on-every-main-build behaviour so the
-    // scheduled maintenance-window automation is unaffected.
-    stage('Deploy approval') {
+    // Deploy only on release tags. Pushing main runs lint/tests/audit and
+    // stops there; to ship, tag the commit and push the tag:
+    //   git tag v2.2.0 && git push forgejo main --tags
+    // The stage deploys when the built HEAD of main carries a v* tag, so a
+    // tag on an older commit never ships by accident. The Forgejo→Jenkins
+    // webhook must include tag-push events for the tag build to fire.
+    stage('Deploy') {
       when {
-        environment name: 'POKERING_REQUIRE_DEPLOY_APPROVAL', value: 'true'
-      }
-      steps {
-        timeout(time: 30, unit: 'MINUTES') {
-          input message: 'Deploy this build to production?'
+        expression {
+          sh label: 'Fetch tags', script: 'git fetch --tags --quiet'
+          env.RELEASE_TAG = sh(
+            script: "git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -n1",
+            returnStdout: true
+          ).trim()
+          if (env.RELEASE_TAG) {
+            echo "Release tag ${env.RELEASE_TAG} points at HEAD — deploying"
+          } else {
+            echo 'No release tag on HEAD — skipping deploy'
+          }
+          return env.RELEASE_TAG
         }
       }
-    }
-
-    stage('Deploy') {
       steps {
         sh label: 'Deploy with Ansible', script: '''#!/bin/sh
           set -eu

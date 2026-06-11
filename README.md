@@ -265,9 +265,9 @@ MAINTENANCE_TZ=Europe/Amsterdam
 MAINTENANCE_MESSAGE="Restart/deploy scheduled"
 ```
 
-For no-restart scheduling, have Jenkins/Ansible write `config/maintenance.json` atomically on the
-already-running app host. `/maintenance` reads this file on every request, and the welcome/session
-pages poll `/maintenance` every 60 seconds.
+For no-restart scheduling, write `config/maintenance.json` atomically on the already-running app
+host (manually or via Ansible). `/maintenance` picks up file changes by mtime, and the
+welcome/session pages poll `/maintenance` every 60 seconds.
 
 Enable a maintenance window:
 
@@ -297,8 +297,27 @@ Disable after a successful deploy:
 { "enabled": false }
 ```
 
-Jenkins should build/test immediately after push, write the enabled file, wait until `startsAt`, run
-the Ansible deploy/restart, then write `{ "enabled": false }` after successful deployment.
+The banner is independent of the release pipeline — deploys ship on tag push (see
+[Releasing](#releasing)); use the banner only when you want to pre-announce a restart window.
+
+## Releasing
+
+Pushing `main` to Forgejo runs the Jenkins pipeline up to lint, tests, and dependency audit —
+nothing deploys. To ship a release:
+
+```bash
+# 1. Bump __version__ and add the changelog entry in version.py, commit, push
+git push forgejo main
+
+# 2. Tag the commit and push the tag — this is the deploy trigger
+git tag v2.2.0
+git push forgejo main --tags
+```
+
+Jenkins deploys only when the built `main` HEAD carries a `v*` tag, so a tag on an older commit
+never ships by accident. Pushing a tag is the deliberate "ship it" action — no separate approval
+step. The Forgejo→Jenkins webhook must be configured to fire on tag pushes as well as branch
+pushes.
 
 ## Security
 
